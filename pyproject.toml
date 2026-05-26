@@ -1,0 +1,19 @@
+[project]
+name = "cloak-browse"
+version = "0.1.0"
+description = "Stealth browser CLI — CloakBrowser + browser-harness wired together"
+requires-python = ">=3.11"
+dependencies = [
+    "cloakbrowser>=0.3",
+    "browser-harness>=0.1",
+]
+
+[project.scripts]
+cloak-browse = "cloak_browse.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+browser-harness = { git = "https://github.com/browser-use/browser-harness.git" }
