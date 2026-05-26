@@ -1,6 +1,6 @@
 [project]
 name = "cloak-browse"
-version = "0.1.0"
+version = "0.2.0"
 description = "Stealth browser CLI — CloakBrowser + browser-harness wired together"
 requires-python = ">=3.11"
 license = "MIT"
@@ -16,6 +16,7 @@ classifiers = [
 ]
 dependencies = [
     "cloakbrowser>=0.3.20",
+    "patchright",
     "browser-harness @ git+https://github.com/browser-use/browser-harness.git",
 ]
 
