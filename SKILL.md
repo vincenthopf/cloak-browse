@@ -148,16 +148,32 @@ click_at_xy(pos["x"], pos["y"])
 ### Fill an input
 
 ```python
-# Focus + clear + type
+# Focus the field, clear it, then insert text in one CDP call
 js("document.querySelector('input[name=email]').focus()")
 wait(0.2)
-# Select all + delete
-press_key("a", modifiers=4)  # Cmd+A (macOS) or use 2 for Ctrl
+press_key("a", modifiers=4)  # Cmd+A (macOS) or 2 for Ctrl
 press_key("Backspace")
-# Type character by character for stealth
-for ch in "user@example.com":
-    press_key(ch)
-    wait(0.05)
+cdp("Input.insertText", text="user@example.com")
+```
+
+> **WARNING:** Do NOT use per-character `press_key()` loops to type text — it double-types on many sites because `press_key` dispatches both `keyDown` with text AND a `char` event. Use `cdp("Input.insertText", text="...")` instead.
+
+### Typing helpers
+
+```python
+# Insert text into a focused field (the reliable way)
+cdp("Input.insertText", text="your text here")
+
+# For sensitive sites wanting per-char delays, use insertText per char
+import random
+for ch in "your text here":
+    cdp("Input.insertText", text=ch)
+    wait(random.uniform(0.03, 0.10))
+
+# press_key is for SPECIAL KEYS only: Enter, Tab, Backspace, Escape, arrows
+press_key("Enter")
+press_key("Tab")
+press_key("Backspace")
 ```
 
 ### Native `<select>` dropdown
