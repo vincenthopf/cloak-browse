@@ -25,20 +25,22 @@ cloak-browse wires them together: one command launches the stealth browser with 
 
 ## Install
 
+One command. Works on macOS, Linux, and Windows. The stealth Chromium binary downloads automatically on first run (~150MB).
+
 ```bash
-# uv (recommended)
+# macOS / Linux
 uv tool install git+https://github.com/vincenthopf/cloak-browse.git
 
-# pipx
-pipx install git+https://github.com/vincenthopf/cloak-browse.git
+# Windows (PowerShell)
+uv tool install git+https://github.com/vincenthopf/cloak-browse.git
 
-# or clone and run directly
-git clone https://github.com/vincenthopf/cloak-browse.git
-cd cloak-browse
-uv run cloak-browse start
+# pipx (any platform)
+pipx install git+https://github.com/vincenthopf/cloak-browse.git
 ```
 
-The stealth Chromium binary downloads automatically on first run (~150MB).
+That's it. Run `cloak-browse start` and the browser launches.
+
+> **Need uv?** `curl -LsSf https://astral.sh/uv/install.sh | sh` (macOS/Linux) or `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"` (Windows)
 
 ## Usage
 

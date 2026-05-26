@@ -4,7 +4,6 @@ import argparse
 import json
 import os
 import signal
-import socket
 import subprocess
 import sys
 import threading
@@ -15,6 +14,7 @@ from pathlib import Path
 CDP_PORT = 9333
 CDP_URL = f"http://127.0.0.1:{CDP_PORT}"
 BH_NAME = "cloak"
+IS_WINDOWS = sys.platform == "win32"
 SESSION_DIR = Path.home() / ".cache" / "cloak-browse"
 SESSION_FILE = SESSION_DIR / "session.json"
 
@@ -60,10 +60,8 @@ def _cdp_alive() -> bool:
 
 
 def _cdp_ws_probe(ws_url: str, timeout: float = 3.0) -> bool:
-    """Verify the CDP WebSocket actually accepts a connection."""
     try:
         import websockets.sync.client as wsc
-
         conn = wsc.connect(ws_url, open_timeout=timeout, close_timeout=1)
         conn.close()
         return True
@@ -72,7 +70,6 @@ def _cdp_ws_probe(ws_url: str, timeout: float = 3.0) -> bool:
 
 
 def _wait_cdp_ready(timeout: float = 15.0) -> dict | None:
-    """Poll until CDP is fully ready (HTTP + WS). Returns version info or None."""
     deadline = time.time() + timeout
     last_err = None
     while time.time() < deadline:
@@ -96,58 +93,57 @@ def _cdp_targets() -> list[dict]:
         return []
 
 
-# --- daemon management ---
-
-
-def _bh_sock():
-    return f"/tmp/bu-{BH_NAME}.sock"
-
-
-def _bh_pid_file():
-    return f"/tmp/bu-{BH_NAME}.pid"
+# --- daemon management (cross-platform via browser-harness IPC) ---
 
 
 def _bh_daemon_alive() -> bool:
     try:
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(1)
-        s.connect(_bh_sock())
-        s.close()
-        return True
-    except (FileNotFoundError, ConnectionRefusedError, socket.timeout):
+        from browser_harness._ipc import ping
+        return ping(BH_NAME, timeout=1.0)
+    except Exception:
         return False
 
 
 def _stop_bh_daemon():
     try:
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(5)
-        s.connect(_bh_sock())
-        s.sendall(b'{"meta":"shutdown"}\n')
-        s.recv(1024)
-        s.close()
+        from browser_harness._ipc import connect, request, identify, cleanup_endpoint
+        pid = identify(BH_NAME, timeout=2.0)
+        try:
+            c, token = connect(BH_NAME, timeout=5.0)
+            request(c, token, {"meta": "shutdown"})
+            c.close()
+        except Exception:
+            pass
+        if pid:
+            for _ in range(50):
+                try:
+                    os.kill(pid, 0)
+                    time.sleep(0.1)
+                except (ProcessLookupError, OSError):
+                    break
+            else:
+                try:
+                    sig = signal.SIGTERM if not IS_WINDOWS else signal.CTRL_BREAK_EVENT
+                    os.kill(pid, sig)
+                except (ProcessLookupError, OSError):
+                    pass
+        cleanup_endpoint(BH_NAME)
     except Exception:
         pass
-    try:
-        pid = int(open(_bh_pid_file()).read())
-        for _ in range(50):
-            try:
-                os.kill(pid, 0)
-                time.sleep(0.1)
-            except ProcessLookupError:
-                break
-    except (FileNotFoundError, ValueError):
-        pass
-    for f in (_bh_sock(), _bh_pid_file()):
-        try:
-            os.unlink(f)
-        except FileNotFoundError:
-            pass
 
 
 def _start_bh_daemon():
     _stop_bh_daemon()
     env = {**os.environ, "BU_NAME": BH_NAME, "BU_CDP_URL": CDP_URL}
+
+    spawn_kwargs = {}
+    if IS_WINDOWS:
+        spawn_kwargs["creationflags"] = (
+            subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+        )
+    else:
+        spawn_kwargs["start_new_session"] = True
+
     subprocess.Popen(
         [
             sys.executable,
@@ -157,14 +153,16 @@ def _start_bh_daemon():
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        start_new_session=True,
+        **spawn_kwargs,
     )
     deadline = time.time() + 15
     while time.time() < deadline:
         if _bh_daemon_alive():
             return True
         time.sleep(0.3)
-    log = Path(f"/tmp/bu-{BH_NAME}.log")
+
+    from browser_harness._ipc import log_path
+    log = log_path(BH_NAME)
     tail = ""
     if log.exists():
         lines = log.read_text().strip().splitlines()
@@ -176,24 +174,32 @@ def _start_bh_daemon():
 # --- stale session cleanup ---
 
 
+def _kill_pid(pid):
+    if pid is None:
+        return
+    try:
+        os.kill(pid, 0)
+    except (ProcessLookupError, OSError):
+        return
+    try:
+        os.kill(pid, signal.SIGTERM if not IS_WINDOWS else signal.CTRL_BREAK_EVENT)
+        time.sleep(0.5)
+        try:
+            os.kill(pid, 0)
+            if not IS_WINDOWS:
+                os.kill(pid, signal.SIGKILL)
+        except (ProcessLookupError, OSError):
+            pass
+    except (ProcessLookupError, OSError):
+        pass
+
+
 def _cleanup_stale_session():
-    """Kill orphaned browser/daemon from a previous crash."""
     session = _load_session()
     if not session:
         return
     for key in ("daemonPid", "browserPid"):
-        pid = session.get(key)
-        if pid:
-            try:
-                os.kill(pid, 0)  # check alive
-                os.kill(pid, signal.SIGTERM)
-                time.sleep(0.5)
-                try:
-                    os.kill(pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-            except ProcessLookupError:
-                pass
+        _kill_pid(session.get(key))
     _stop_bh_daemon()
     _clear_session()
 
@@ -202,12 +208,16 @@ def _cleanup_stale_session():
 
 
 def cmd_start(args):
-    """Launch stealth Chromium and wire browser-harness to it."""
     from cloakbrowser import launch, launch_persistent_context
+    from cloakbrowser.download import ensure_binary
 
-    # Clean up any stale session from a previous crash
     if _cdp_alive() or _load_session().get("browserPid"):
         _cleanup_stale_session()
+
+    # Ensure stealth binary is downloaded
+    print("checking stealth chromium binary...")
+    binary_path = ensure_binary()
+    print(f"  binary: {binary_path}")
 
     extra_args = [f"--remote-debugging-port={CDP_PORT}"]
     proxy = args.proxy or None
@@ -235,7 +245,6 @@ def cmd_start(args):
         browser = launch(**launch_kwargs)
         cleanup = browser.close
 
-    # Full CDP readiness probe — HTTP + WebSocket
     info = _wait_cdp_ready(timeout=15.0)
     if not info:
         print("error: CDP endpoint didn't become ready", file=sys.stderr)
@@ -248,7 +257,6 @@ def cmd_start(args):
     print(f"  CDP:     {CDP_URL}")
     print(f"  mode:    {mode}")
 
-    # Save session metadata
     _save_session(
         browserVersion=browser_version,
         backend=backend,
@@ -260,7 +268,6 @@ def cmd_start(args):
         startedAt=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     )
 
-    # Start browser-harness daemon
     print("starting browser-harness daemon...")
     if _start_bh_daemon():
         print(f"  harness: ready (BU_NAME={BH_NAME})")
@@ -275,7 +282,6 @@ def cmd_start(args):
     print()
     print("ctrl+c to stop")
 
-    # Block until interrupted
     _is_closing = False
     stop = False
 
@@ -284,7 +290,8 @@ def cmd_start(args):
         stop = True
 
     signal.signal(signal.SIGINT, handle_sig)
-    signal.signal(signal.SIGTERM, handle_sig)
+    if not IS_WINDOWS:
+        signal.signal(signal.SIGTERM, handle_sig)
 
     while not stop:
         time.sleep(0.5)
@@ -304,7 +311,6 @@ def cmd_start(args):
 
 
 def cmd_run(args):
-    """Run a command against the stealth browser via browser-harness."""
     if not _cdp_alive():
         print(
             "error: no stealth browser running — run `cloak-browse start` first",
@@ -319,41 +325,31 @@ def cmd_run(args):
 
     os.environ["BU_NAME"] = BH_NAME
     import browser_harness.helpers as _h
-
     ns = {k: getattr(_h, k) for k in dir(_h) if not k.startswith("_")}
 
     timeout = args.timeout
     if timeout:
-
         def _run():
             exec(args.code, ns)
-
         t = threading.Thread(target=_run, daemon=True)
         t.start()
         t.join(timeout=timeout)
         if t.is_alive():
-            print(
-                f"error: run timed out after {timeout}s",
-                file=sys.stderr,
-            )
+            print(f"error: run timed out after {timeout}s", file=sys.stderr)
             sys.exit(124)
     else:
         exec(args.code, ns)
 
 
 def cmd_stop(args):
-    """Stop harness daemon and clean up session."""
     _stop_bh_daemon()
     _clear_session()
     print("harness daemon stopped.")
     if _cdp_alive():
-        print(
-            "note: stealth browser still running (ctrl+c the `start` process to close it)"
-        )
+        print("note: stealth browser still running (ctrl+c the `start` process to close it)")
 
 
 def cmd_status(args):
-    """Show detailed status of stealth browser and harness."""
     cdp_up = _cdp_alive()
     bh_up = _bh_daemon_alive()
     session = _load_session()
@@ -377,13 +373,12 @@ def cmd_status(args):
     print(f"harness daemon:   {'running' if bh_up else 'not running'} (BU_NAME={BH_NAME})")
 
     if session:
-        print(f"session:")
+        print("session:")
         print(f"  backend:  {session.get('backend', '?')}")
         print(f"  mode:     {session.get('mode', '?')}")
         print(f"  profile:  {session.get('profile', '?')}")
         print(f"  started:  {session.get('startedAt', '?')}")
         if session.get("proxy"):
-            # Redact credentials
             proxy = session["proxy"]
             if "@" in proxy:
                 proxy = proxy.split("@")[-1]
@@ -411,32 +406,15 @@ def main():
     sp = sub.add_parser("start", help="Launch stealth browser + harness")
     sp.add_argument("--proxy", help="Proxy URL (http://user:pass@host:port)")
     sp.add_argument("--profile", help="Persistent profile directory path")
-    sp.add_argument(
-        "--headless",
-        action="store_true",
-        help="Run headless (stealth patches still active)",
-    )
-    sp.add_argument(
-        "--humanize",
-        action="store_true",
-        help="Enable human-like mouse/keyboard behavior",
-    )
-    sp.add_argument(
-        "--backend",
-        choices=["patchright", "playwright"],
-        default="patchright",
-        help="Playwright backend (default: patchright for max stealth)",
-    )
+    sp.add_argument("--headless", action="store_true", help="Run headless (stealth patches still active)")
+    sp.add_argument("--humanize", action="store_true", help="Enable human-like mouse/keyboard behavior")
+    sp.add_argument("--backend", choices=["patchright", "playwright"], default="patchright",
+                    help="Playwright backend (default: patchright for max stealth)")
     sp.set_defaults(func=cmd_start)
 
     sp = sub.add_parser("run", help="Run code against the stealth browser")
     sp.add_argument("code", help="Python code to execute")
-    sp.add_argument(
-        "--timeout",
-        type=float,
-        default=None,
-        help="Max execution time in seconds",
-    )
+    sp.add_argument("--timeout", type=float, default=None, help="Max execution time in seconds")
     sp.set_defaults(func=cmd_run)
 
     sub.add_parser("stop", help="Stop harness daemon").set_defaults(func=cmd_stop)
