@@ -26,12 +26,13 @@ cloak-browse wires them together: one command launches the stealth browser with 
 ## Install
 
 ```bash
+# uv (recommended)
 uv tool install git+https://github.com/vincenthopf/cloak-browse.git
-```
 
-Or clone and run directly:
+# pipx
+pipx install git+https://github.com/vincenthopf/cloak-browse.git
 
-```bash
+# or clone and run directly
 git clone https://github.com/vincenthopf/cloak-browse.git
 cd cloak-browse
 uv run cloak-browse start
