@@ -11,7 +11,10 @@ from cloak_browse.security import redact_proxy
         (None, None),
         ("", None),
         ("http://user:pass@proxy.example:8080", "http://proxy.example:8080"),
-        ("socks5://proxy.example:1080/path?token=secret", "socks5://proxy.example:1080"),
+        (
+            "socks5://proxy.example:1080/path?token=secret",
+            "socks5://proxy.example:1080",
+        ),
         ("user:pass@proxy.example:9000", "proxy.example:9000"),
         ("http://[::1]:8080", "http://[::1]:8080"),
         ("not a proxy", "<configured>"),

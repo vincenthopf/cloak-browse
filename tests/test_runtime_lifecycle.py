@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-from dataclasses import replace
 
 from cloak_browse.cdp import CdpSnapshot
 from cloak_browse.harness import HarnessResult, HarnessState
@@ -76,13 +75,17 @@ class FakeHarness:
     def __init__(
         self,
         alive_states=None,
-        start_result=HarnessResult(True, None),
-        stop_result=HarnessResult(True, None),
+        start_result=None,
+        stop_result=None,
         execute_result=0,
     ):
         self.alive_states = list(alive_states or [HarnessState(False, None)])
-        self.start_result = start_result
-        self.stop_result = stop_result
+        self.start_result = (
+            HarnessResult(True, None) if start_result is None else start_result
+        )
+        self.stop_result = (
+            HarnessResult(True, None) if stop_result is None else stop_result
+        )
         self.execute_result = execute_result
         self.start_calls = []
         self.stop_calls = []
@@ -233,7 +236,9 @@ def test_stale_orphaned_browser_is_never_signalled(
         store=store,
         owner_alive=False,
     )
-    monkeypatch.setattr("os.kill", lambda *args: (_ for _ in ()).throw(AssertionError()))
+    monkeypatch.setattr(
+        "os.kill", lambda *args: (_ for _ in ()).throw(AssertionError())
+    )
     assert runtime._recover_stale_session(session_record) is False
     current = store.load().record
     assert current.phase == "orphaned"
@@ -384,8 +389,11 @@ def test_wait_loop_honours_cross_platform_stop_request(app_paths, session_record
         store=store,
         owner_alive=True,
     )
-    assert runtime._wait_for_shutdown(
-        session_record,
-        SequenceCdp([running_snapshot()]),
-    ) == 0
+    assert (
+        runtime._wait_for_shutdown(
+            session_record,
+            SequenceCdp([running_snapshot()]),
+        )
+        == 0
+    )
     assert store.load().record.phase == "stopping"

@@ -14,9 +14,13 @@ def test_missing_session_is_normal(app_paths):
 def test_corrupt_and_partial_sessions_are_reported(app_paths, session_record):
     app_paths.session_file.write_text("{", encoding="utf-8")
     assert "invalid session file" in SessionStore(app_paths).load().error
-    app_paths.session_file.write_text(json.dumps({"schema_version": 1}), encoding="utf-8")
+    app_paths.session_file.write_text(
+        json.dumps({"schema_version": 1}), encoding="utf-8"
+    )
     assert "session_id must be a string" in SessionStore(app_paths).load().error
-    app_paths.session_file.write_text(json.dumps(session_record.to_dict()), encoding="utf-8")
+    app_paths.session_file.write_text(
+        json.dumps(session_record.to_dict()), encoding="utf-8"
+    )
     assert SessionStore(app_paths).load().record == session_record
 
 

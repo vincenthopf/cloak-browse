@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from .models import SessionRecord
 from .paths import AppPaths, ensure_private_dir
@@ -134,12 +136,8 @@ class SessionStore:
                 finally:
                     os.close(directory_fd)
         except BaseException:
-            try:
+            with contextlib.suppress(OSError):
                 os.close(fd)
-            except OSError:
-                pass
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 temporary.unlink()
-            except FileNotFoundError:
-                pass
             raise

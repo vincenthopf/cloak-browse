@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 
 def process_start_token(
@@ -32,9 +31,7 @@ def same_process(pid: int, expected_token: str | None) -> bool:
 
 def _linux_start_token(pid: int) -> str | None:
     try:
-        raw = Path(f"/proc/{pid}/stat").read_bytes().decode(
-            "ascii", errors="replace"
-        )
+        raw = Path(f"/proc/{pid}/stat").read_bytes().decode("ascii", errors="replace")
         tail = raw[raw.rindex(")") + 2 :].split()
         return f"linux:{tail[19]}"
     except (FileNotFoundError, PermissionError, OSError, ValueError, IndexError):
@@ -68,7 +65,10 @@ def _windows_start_token(pid: int) -> str | None:
     except ImportError:
         return None
     try:
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        load_library = getattr(ctypes, "WinDLL", None)
+        if load_library is None:
+            return None
+        kernel32 = load_library("kernel32", use_last_error=True)
         kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
         kernel32.OpenProcess.restype = wintypes.HANDLE
         kernel32.GetProcessTimes.argtypes = [

@@ -51,9 +51,11 @@ class StaticHarness:
 def make_runtime(
     app_paths,
     cdp_value,
-    harness_state=HarnessState(False, None),
+    harness_state=None,
     owner_alive=False,
 ):
+    if harness_state is None:
+        harness_state = HarnessState(False, None)
     stdout = io.StringIO()
     stderr = io.StringIO()
     runtime = CloakBrowseRuntime(

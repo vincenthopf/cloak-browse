@@ -4,7 +4,12 @@ import io
 import json
 import urllib.error
 
-from cloak_browse.cdp import CdpClient, CdpSnapshot, TabInfo, browser_id_from_websocket_url
+from cloak_browse.cdp import (
+    CdpClient,
+    CdpSnapshot,
+    TabInfo,
+    browser_id_from_websocket_url,
+)
 
 
 class Response:
@@ -73,7 +78,9 @@ def test_successful_http_websocket_and_target_probe():
 
 def test_no_listener_is_a_clean_stopped_state():
     client = CdpClient(listener_probe=lambda *args: False)
-    assert client.probe() == CdpSnapshot(False, False, False, None, None, None, None, None)
+    assert client.probe() == CdpSnapshot(
+        False, False, False, None, None, None, None, None
+    )
 
 
 def test_malformed_json_is_actionable():
@@ -149,7 +156,10 @@ def test_wait_ready_is_bounded():
 
 
 def test_browser_id_ignores_query_strings():
-    assert browser_id_from_websocket_url(
-        "ws://localhost/devtools/browser/abc?token=secret"
-    ) == "abc"
+    assert (
+        browser_id_from_websocket_url(
+            "ws://localhost/devtools/browser/abc?token=secret"
+        )
+        == "abc"
+    )
     assert browser_id_from_websocket_url("ws://localhost/devtools/page/abc") is None

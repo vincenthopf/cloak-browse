@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import argparse
-import sys
-from collections.abc import Sequence
-from typing import Callable
+from collections.abc import Callable, Sequence
 
 from ._version import __version__
 from .runtime import CloakBrowseRuntime, StartOptions
@@ -14,7 +12,9 @@ def build_parser() -> argparse.ArgumentParser:
         prog="cloak-browse",
         description="Stealth browser controlled by browser-harness",
     )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}"
+    )
     commands = parser.add_subparsers(dest="command")
 
     start = commands.add_parser("start", help="Launch stealth browser + harness")
@@ -85,7 +85,6 @@ def main(
     if args.command == "status":
         return runtime.status(args.json_output)
     parser.error(f"unknown command {args.command!r}")
-    return 2
 
 
 def _positive_float(value: str) -> float:

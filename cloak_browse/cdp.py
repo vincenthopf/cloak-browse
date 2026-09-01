@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import socket
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import urlsplit
 
 
@@ -80,7 +82,9 @@ class CdpClient:
             if isinstance(websocket_url, str)
             else None
         )
-        owned = None if expected_browser_id is None else browser_id == expected_browser_id
+        owned = (
+            None if expected_browser_id is None else browser_id == expected_browser_id
+        )
         websocket_available, websocket_error = self._probe_websocket(
             websocket_url, timeout
         )
@@ -162,10 +166,8 @@ class CdpClient:
             return False, f"CDP WebSocket probe failed: {_brief_error(exc)}"
         finally:
             if connection is not None:
-                try:
+                with contextlib.suppress(Exception):
                     connection.close()
-                except Exception:
-                    pass
 
 
 def browser_id_from_websocket_url(value: str) -> str | None:

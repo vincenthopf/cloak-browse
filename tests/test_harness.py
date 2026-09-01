@@ -103,7 +103,11 @@ def test_execute_timeout_returns_standard_timeout_code(app_paths, session_record
 def test_cleanup_only_removes_session_scoped_directories(app_paths, session_record):
     manager = HarnessManager(app_paths, runner=Runner([]), environment={})
     harness_paths = app_paths.harness(session_record.session_id)
-    for path in (harness_paths.runtime_dir, harness_paths.tmp_dir, harness_paths.config_dir):
+    for path in (
+        harness_paths.runtime_dir,
+        harness_paths.tmp_dir,
+        harness_paths.config_dir,
+    ):
         path.mkdir(parents=True, exist_ok=True)
         (path / "data").write_text("x", encoding="utf-8")
     unrelated = app_paths.cache_dir / "unrelated"

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import signal
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, TextIO
+from typing import Any, TextIO
 from uuid import uuid4
 
 from .browser import BrowserHandle, BrowserLauncher, BrowserOptions
@@ -76,7 +78,9 @@ class CloakBrowseRuntime:
                 self._error(f"{read.error}; cannot quarantine it: {exc}")
                 return 1
             self._diagnostic(
-                f"{read.error}; moved it to {quarantined}" if quarantined else read.error
+                f"{read.error}; moved it to {quarantined}"
+                if quarantined
+                else read.error
             )
         elif read.record is not None:
             if not self._recover_stale_session(read.record):
@@ -135,8 +139,9 @@ class CloakBrowseRuntime:
             print("checking stealth chromium binary...", file=self.stdout)
             binary_path = self.browser_launcher.ensure_binary()
             print(f"  binary: {binary_path}", file=self.stdout)
+            launch_mode = f"{session.mode}, {session.backend} backend"
             print(
-                f"launching stealth chromium ({session.mode}, {session.backend} backend, "
+                f"launching stealth chromium ({launch_mode}, "
                 f"CDP on :{session.cdp_port})...",
                 file=self.stdout,
             )
@@ -209,10 +214,10 @@ class CloakBrowseRuntime:
             and snapshot.websocket_available
             and snapshot.owned is True
         ):
-            self._error(
-                snapshot.error
-                or "the recorded browser is unavailable or the CDP endpoint is not owned"
+            endpoint_error = (
+                "the recorded browser is unavailable or the CDP endpoint is not owned"
             )
+            self._error(snapshot.error or endpoint_error)
             return 1
         harness = self.harness_factory(self.paths)
         daemon = harness.alive(session)
@@ -314,7 +319,8 @@ class CloakBrowseRuntime:
             self._error(
                 "the previous start process crashed while its browser still appears "
                 f"to own CDP port {session.cdp_port}; close that browser manually. "
-                "CloakBrowse did not signal a PID because ownership cannot be proven safely"
+                "CloakBrowse did not signal a PID because ownership cannot be "
+                "proven safely"
             )
             return False
         try:
@@ -395,10 +401,8 @@ class CloakBrowseRuntime:
             return 0
         finally:
             for item, handler in previous_handlers.items():
-                try:
+                with contextlib.suppress(OSError, ValueError):
                     signal.signal(item, handler)
-                except (OSError, ValueError):
-                    pass
 
     def _shutdown(
         self,
@@ -447,13 +451,15 @@ class CloakBrowseRuntime:
                 errors.append(f"session cleanup failed: {exc}")
         if snapshot.listener and snapshot.owned is False:
             errors.append(
-                f"CDP port {session.cdp_port} was reused by another process and was left untouched"
+                f"CDP port {session.cdp_port} was reused by another process "
+                "and was left untouched"
             )
         for error in errors:
             self._diagnostic(error)
         if errors or managed_browser_remains or managed_daemon_remains:
             self._error(
-                "shutdown left managed state behind; run `cloak-browse status` for details"
+                "shutdown left managed state behind; run `cloak-browse status` "
+                "for details"
             )
             return 1
         print("done.", file=self.stdout)
@@ -534,7 +540,9 @@ class CloakBrowseRuntime:
             stop_requested = self.store.stop_requested(session.session_id)
 
         browser_state = self._browser_state(snapshot, session)
-        daemon_state = "unknown" if daemon.error else ("running" if daemon.alive else "stopped")
+        daemon_state = (
+            "unknown" if daemon.error else ("running" if daemon.alive else "stopped")
+        )
         state = self._overall_state(
             session=session,
             session_error=read.error,
@@ -677,8 +685,12 @@ class CloakBrowseRuntime:
         return self.process_matches(session.owner_pid, session.owner_started)
 
     def _timestamp(self) -> str:
-        return self.now().astimezone(UTC).replace(microsecond=0).isoformat().replace(
-            "+00:00", "Z"
+        return (
+            self.now()
+            .astimezone(UTC)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z")
         )
 
     def _diagnostic(self, message: str) -> None:

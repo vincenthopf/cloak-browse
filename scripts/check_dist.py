@@ -73,9 +73,10 @@ def _validate_wheel(path: Path, version: str) -> list[str]:
             message = email.message_from_bytes(archive.read(metadata_name))
             dependencies = set(message.get_all("Requires-Dist", []))
             if dependencies != EXPECTED_DEPENDENCIES:
+                expected = sorted(EXPECTED_DEPENDENCIES)
+                actual = sorted(dependencies)
                 errors.append(
-                    "wheel dependencies differ: "
-                    f"expected {sorted(EXPECTED_DEPENDENCIES)}, got {sorted(dependencies)}"
+                    f"wheel dependencies differ: expected {expected}, got {actual}"
                 )
         if entry_name in names:
             entries = archive.read(entry_name).decode("utf-8")

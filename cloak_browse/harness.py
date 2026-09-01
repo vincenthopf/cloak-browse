@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import sys
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any
 
 from .models import SessionRecord
 from .paths import AppPaths, ensure_private_dir
@@ -81,7 +83,9 @@ class HarnessManager:
             state = self.alive(session)
             if state.alive:
                 return HarnessResult(True, None)
-            return HarnessResult(False, state.error or "daemon did not answer its IPC ping")
+            return HarnessResult(
+                False, state.error or "daemon did not answer its IPC ping"
+            )
         return HarnessResult(False, self._result_error(result, session))
 
     def stop(self, session: SessionRecord) -> HarnessResult:
@@ -193,15 +197,13 @@ class HarnessManager:
 def _remove_private_tree(path: Path, session_id: str) -> None:
     if session_id not in path.parts or not path.exists():
         return
-    for child in sorted(path.rglob("*"), key=lambda item: len(item.parts), reverse=True):
-        try:
+    for child in sorted(
+        path.rglob("*"), key=lambda item: len(item.parts), reverse=True
+    ):
+        with contextlib.suppress(OSError):
             child.unlink() if child.is_file() or child.is_symlink() else child.rmdir()
-        except OSError:
-            pass
-    try:
+    with contextlib.suppress(OSError):
         path.rmdir()
-    except OSError:
-        pass
 
 
 def _brief_error(error: BaseException) -> str:

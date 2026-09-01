@@ -29,7 +29,9 @@ def validate(tag: str | None = None) -> list[str]:
     version = package_version()
     project = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     dynamic = project.get("project", {}).get("dynamic", [])
-    version_path = project.get("tool", {}).get("hatch", {}).get("version", {}).get("path")
+    version_path = (
+        project.get("tool", {}).get("hatch", {}).get("version", {}).get("path")
+    )
     if "version" not in dynamic:
         errors.append("pyproject.toml must declare version as dynamic")
     if version_path != "cloak_browse/_version.py":
