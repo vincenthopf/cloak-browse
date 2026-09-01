@@ -2,46 +2,73 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    tags:
+      - "v*"
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
+    env:
+      CLOAK_BROWSE_CACHE_DIR: ${{ runner.temp }}/cloak-browse-release
+      CLOAK_BROWSE_VERIFY_DEPS: "1"
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          version: "latest"
-
-      - name: Set up Python
-        run: uv python install 3.12
-
-      - name: Build package
-        run: uv build
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
         with:
-          name: dist
-          path: dist/
-
-  github-release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          generate_release_notes: true
+          version: "0.10.0"
+          enable-cache: true
+      - run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - run: uv python install 3.13
+      - run: uv sync --frozen --python 3.13
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run pytest
+      - run: uv run python scripts/check_release.py --tag "$GITHUB_REF_NAME"
+      - run: uv run python -c "from cloakbrowser.download import ensure_binary; print(ensure_binary())"
+      - shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/cloak-browse-release-start.log"
+          status="$RUNNER_TEMP/cloak-browse-release-status.json"
+          uv run cloak-browse start --headless >"$log" 2>&1 &
+          owner=$!
+          cleanup() {
+            uv run cloak-browse stop >/dev/null 2>&1 || true
+            kill "$owner" >/dev/null 2>&1 || true
+            wait "$owner" >/dev/null 2>&1 || true
+            cat "$log"
+          }
+          trap cleanup EXIT
+          running=0
+          for _ in $(seq 1 90); do
+            uv run cloak-browse status --json >"$status" 2>"$RUNNER_TEMP/cloak-browse-release-status.err" || true
+            if uv run python -c "import json; raise SystemExit(0 if json.load(open('$status'))['state'] == 'running' else 1)"; then
+              running=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$running" -ne 1 ]; then
+            cat "$status" || true
+            cat "$RUNNER_TEMP/cloak-browse-release-status.err" || true
+            exit 1
+          fi
+          uv run cloak-browse run "print(page_info())" --timeout 20
+          uv run cloak-browse stop
+          wait "$owner"
+          trap - EXIT
+          cat "$log"
+      - run: uv build
+      - run: uv run python scripts/check_dist.py
+      - run: uv venv .release-smoke --python 3.13
+      - run: uv pip install --python .release-smoke/bin/python dist/*.whl
+      - run: .release-smoke/bin/cloak-browse --help
+      - run: .release-smoke/bin/python -c "import json, subprocess; result = subprocess.run(['.release-smoke/bin/cloak-browse', 'status', '--json'], check=True, capture_output=True, text=True); json.loads(result.stdout); assert result.stderr == ''"
+      - run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
