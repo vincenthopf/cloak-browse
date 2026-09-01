@@ -46,6 +46,12 @@ jobs:
           run_doc "websockets sync client guidance" docs get websockets "sync client connect, open timeout, close timeout, and exceptions" --tokens 2500
           run_doc "Hatch dynamic version and distributions" docs get hatch "dynamic version path and wheel sdist configuration" --tokens 3000
           run_doc "GitHub Actions release validation" docs get github-actions "validate exact tag commit before creating a release" --tokens 2500
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: maintenance-research
+          path: |
+            uv.lock
+            research/escli-docs.md
       - shell: bash
         run: |
           set -euo pipefail
@@ -53,5 +59,7 @@ jobs:
           git config user.email "cloak-browse-maintenance[bot]@users.noreply.github.com"
           git add -f uv.lock
           git add research/escli-docs.md
-          git commit -m "chore: record escli research and dependency lock"
-          git push
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: record escli research and dependency lock"
+            git push
+          fi
