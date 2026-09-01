@@ -1,4 +1,4 @@
-name: Publish maintenance branch
+name: Maintenance quality research
 
 on:
   push:
@@ -8,81 +8,36 @@ on:
       - .github/workflows/research-maintenance.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  publish:
+  research:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          fetch-depth: 0
+          ref: maintenance/cloak-browse-hardening
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: "0.10.0"
+      - run: uv python install 3.13
+      - run: uv sync --frozen --python 3.13
       - shell: bash
         run: |
-          set -euo pipefail
-          printf '%s  %s\n' c7a6bcf6dcc4035ee854f54a0ececdefdfb10c861b8f560b35bae00b7ea9ec37 publish/upload-00 | sha256sum -c -
-          printf '%s  %s\n' 50914cca0eef089c9a8e693b36a89aa180833275b1706076db08f97c184ba678 publish/upload-01 | sha256sum -c -
-          printf '%s  %s\n' fa573ebbefc76a2fc2df4b0399be730b109b897caf4fe395762fe4dc07b5def1 publish/upload-02 | sha256sum -c -
-          printf '%s  %s\n' 93bcac532f5967a769dd7ad53dda3895d6d1a5e925fade3c8ae8dd08e6996e18 publish/upload-03-part-00 | sha256sum -c -
-          printf '%s  %s\n' 3faf69ff7f632b0a79c95987ed2df6163ffe78f8d7aa05a8cf9fa8ad1c65ab17 publish/upload-03-part-01 | sha256sum -c -
-          printf '%s  %s\n' 25473fa4a805a33ad1c845ec21e3fd0bffb7fb1b65b62b4c980e6a9ddf17f82e publish/upload-03-part-02 | sha256sum -c -
-          printf '%s  %s\n' 31646b6fad48cb838e092fa99ce1fae949bcf4dcef87d0b5c3798123d7d197fd publish/upload-03-part-03 | sha256sum -c -
-          cat publish/upload-00 publish/upload-01 publish/upload-02 publish/upload-03-part-* >/tmp/cloak-browse-maintenance.b64
-          printf '%s  %s\n' 19215ea8352bc08ea1d8da05a1fde3b2fe3c482a1526fe0a770619d47cbab60d /tmp/cloak-browse-maintenance.b64 | sha256sum -c -
-          base64 --decode /tmp/cloak-browse-maintenance.b64 >/tmp/cloak-browse-maintenance.tar.xz
-          printf '%s  %s\n' 18e83d5001e02813626a83a0cb94f80f0418f1873b1badf586813ecdd3d80bcc /tmp/cloak-browse-maintenance.tar.xz | sha256sum -c -
-          mkdir /tmp/cloak-browse-maintenance
-          tar -xJf /tmp/cloak-browse-maintenance.tar.xz -C /tmp/cloak-browse-maintenance
-          cp uv.lock /tmp/cloak-browse-maintenance/uv.lock
-          printf '%s  %s\n' e90d064de63a3761dab2f686f25f68f1e5067e72ef5c9fe120de0f0a156593ee /tmp/cloak-browse-maintenance/uv.lock | sha256sum -c -
-      - shell: bash
-        run: |
-          set -euo pipefail
-          base=7368fda0296c3e5a6e19c5e1e7cee65e059ce0fd
-          branch=maintenance/cloak-browse-hardening
-          git fetch origin main "$branch"
-          test "$(git rev-parse "origin/$branch")" = "$base"
-          git switch -C "$branch" "origin/$branch"
-          git config user.name "cloak-browse-maintenance[bot]"
-          git config user.email "cloak-browse-maintenance[bot]@users.noreply.github.com"
-
-          mkdir -p tests
-          cp -R /tmp/cloak-browse-maintenance/tests/. tests/
-          git add tests
-          git commit -m "test: characterize cli and session behavior"
-          git push origin "HEAD:$branch"
-
-          mkdir -p cloak_browse
-          cp -R /tmp/cloak-browse-maintenance/cloak_browse/. cloak_browse/
-          git add cloak_browse
-          git commit -m "fix: harden session and process lifecycle"
-          git push origin "HEAD:$branch"
-
-          mkdir -p scripts
-          cp /tmp/cloak-browse-maintenance/.gitignore .gitignore
-          cp /tmp/cloak-browse-maintenance/CHANGELOG.md CHANGELOG.md
-          cp /tmp/cloak-browse-maintenance/pyproject.toml pyproject.toml
-          cp /tmp/cloak-browse-maintenance/scripts/check_dist.py scripts/check_dist.py
-          cp /tmp/cloak-browse-maintenance/scripts/check_release.py scripts/check_release.py
-          cp /tmp/cloak-browse-maintenance/uv.lock uv.lock
-          git add .gitignore CHANGELOG.md pyproject.toml scripts uv.lock
-          git commit -m "fix: make machine output and dependency contracts reliable"
-          git push origin "HEAD:$branch"
-
-          mkdir -p .github/workflows
-          cp /tmp/cloak-browse-maintenance/.github/workflows/ci.yml .github/workflows/ci.yml
-          cp /tmp/cloak-browse-maintenance/.github/workflows/release.yml .github/workflows/release.yml
-          git add .github/workflows/ci.yml .github/workflows/release.yml
-          git commit -m "ci: validate supported platforms and release artifacts"
-          git push origin "HEAD:$branch"
-
-          cp /tmp/cloak-browse-maintenance/README.md README.md
-          cp /tmp/cloak-browse-maintenance/SKILL.md SKILL.md
-          cp /tmp/cloak-browse-maintenance/findings.md findings.md
-          git add README.md SKILL.md findings.md
-          git commit -m "docs: align usage and architecture with runtime behavior"
-          git push origin "HEAD:$branch"
-
-          test "$(git rev-list --count "$base..HEAD")" -eq 5
-          test -z "$(git status --porcelain)"
-          git diff --check "$base..HEAD"
+          set -u
+          mkdir -p /tmp/cloak-browse-quality
+          uv run ruff check --fix . > /tmp/cloak-browse-quality/ruff-fix.log 2>&1 || true
+          uv run ruff format . > /tmp/cloak-browse-quality/ruff-format.log 2>&1 || true
+          git diff --binary > /tmp/cloak-browse-quality/ruff.patch
+          uv run ruff check . > /tmp/cloak-browse-quality/ruff-check.log 2>&1 || true
+          uv run ruff format --check . > /tmp/cloak-browse-quality/ruff-format-check.log 2>&1 || true
+          uv run mypy > /tmp/cloak-browse-quality/mypy.log 2>&1 || true
+          uv run pytest > /tmp/cloak-browse-quality/pytest.log 2>&1 || true
+          rm -rf dist
+          uv build > /tmp/cloak-browse-quality/build.log 2>&1 || true
+          uv run python scripts/check_dist.py > /tmp/cloak-browse-quality/dist.log 2>&1 || true
+          git status --short > /tmp/cloak-browse-quality/status.log
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cloak-browse-quality-research
+          path: /tmp/cloak-browse-quality
