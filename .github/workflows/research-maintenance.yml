@@ -1,0 +1,62 @@
+name: Maintenance research
+
+on:
+  push:
+    branches:
+      - research/cloak-browse-escli-docs
+    paths:
+      - pyproject.toml
+      - .github/workflows/research-maintenance.yml
+
+permissions:
+  contents: write
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: "0.10.0"
+      - run: uv python install 3.13
+      - run: uv lock
+      - shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p research .tools/escli
+          curl -fsSL "https://github.com/eight-state/eightstate/releases/download/escli-v0.21.1/escli-v0.21.1-linux-x64-baseline.tar.gz" -o .tools/escli/archive.tar.gz
+          printf '%s  %s\n' "45c8c1505fb2025c4ca26a88ebb043efc240aafebcf21c129247a21de6eee946" ".tools/escli/archive.tar.gz" | sha256sum -c -
+          tar -xzf .tools/escli/archive.tar.gz -C .tools/escli
+          escli="$(find .tools/escli -type f -name escli -perm -u+x | head -n 1)"
+          if [ -z "$escli" ]; then
+            escli="$(find .tools/escli -type f -name escli | head -n 1)"
+            chmod +x "$escli"
+          fi
+          report="research/escli-docs.md"
+          printf '# escli docs research\n\n- escli: v0.21.1\n- generated: %s\n\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$report"
+          run_doc() {
+            title="$1"
+            shift
+            printf '## %s\n\n```text\n' "$title" >>"$report"
+            set +e
+            "$escli" "$@" >>"$report" 2>&1
+            code=$?
+            set -e
+            printf '\n[exit %s]\n```\n\n' "$code" >>"$report"
+          }
+          run_doc "browser-harness search" docs search browser-harness
+          run_doc "CloakBrowser search" docs search cloakbrowser
+          run_doc "Playwright process and launch guidance" docs get playwright "Python browser launch, process lifetime, and shutdown" --tokens 3000
+          run_doc "Patchright compatibility guidance" docs get patchright "Python backend compatibility with Playwright and proxy authentication" --tokens 2500
+          run_doc "websockets sync client guidance" docs get websockets "sync client connect, open timeout, close timeout, and exceptions" --tokens 2500
+          run_doc "Hatch dynamic version and distributions" docs get hatch "dynamic version path and wheel sdist configuration" --tokens 3000
+          run_doc "GitHub Actions release validation" docs get github-actions "validate exact tag commit before creating a release" --tokens 2500
+      - shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "cloak-browse-maintenance[bot]"
+          git config user.email "cloak-browse-maintenance[bot]@users.noreply.github.com"
+          git add uv.lock research/escli-docs.md
+          git commit -m "chore: record escli research and dependency lock"
+          git push
