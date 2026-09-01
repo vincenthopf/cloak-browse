@@ -12,7 +12,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      CLOAK_BROWSE_CACHE_DIR: ${{ runner.temp }}/cloak-browse-release
+      CLOAK_BROWSE_CACHE_DIR: ${{ github.workspace }}/.cloak-browse-release
       CLOAK_BROWSE_VERIFY_DEPS: "1"
       GH_TOKEN: ${{ github.token }}
     steps:
