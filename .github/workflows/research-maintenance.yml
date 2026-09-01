@@ -1,4 +1,4 @@
-name: Export maintenance workspace
+name: Generate final quality fixes
 
 on:
   push:
@@ -11,28 +11,38 @@ permissions:
   contents: read
 
 jobs:
-  export:
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.0"
       - shell: bash
         run: |
           set -euo pipefail
           git fetch origin maintenance/cloak-browse-hardening
-          git archive --format=tar.gz --output=/tmp/cloak-browse-maintenance.tar.gz origin/maintenance/cloak-browse-hardening
-          mkdir -p /tmp/recovery
-          cp research/escli-docs.md /tmp/recovery/ 2>/dev/null || true
-          cat research/quality-fixes/part-* > /tmp/recovery/quality-fixes.parts.b64 2>/dev/null || true
-          base64 --decode /tmp/recovery/quality-fixes.parts.b64 > /tmp/recovery/quality-fixes.parts.patch 2>/dev/null || true
-          base64 --decode research/quality-fixes.patch.b64 > /tmp/recovery/quality-fixes.patch 2>/dev/null || true
-          sha256sum /tmp/recovery/* > /tmp/recovery/SHA256SUMS 2>/dev/null || true
+          git switch --detach origin/maintenance/cloak-browse-hardening
+          uv python install 3.13
+          uv sync --frozen --python 3.13
+          uv run ruff check . --fix --unsafe-fixes || true
+          uv run ruff format .
+          mkdir -p /tmp/quality
+          git diff --binary > /tmp/quality/ruff-fixes.patch
+          uv run ruff check . > /tmp/quality/ruff-check.txt 2>&1 || true
+          uv run mypy > /tmp/quality/mypy.txt 2>&1 || true
+          uv run pytest > /tmp/quality/pytest.txt 2>&1 || true
+          cp .venv/bin/ruff /tmp/quality/ruff
+          git archive --format=tar.gz --output=/tmp/quality/auto-fixed-source.tar.gz HEAD
+          tar -xzf /tmp/quality/auto-fixed-source.tar.gz -C /tmp/quality
+          git apply /tmp/quality/ruff-fixes.patch
+          tar -czf /tmp/quality/auto-fixed-working-tree.tar.gz --exclude=.git --exclude=.venv .
+          sha256sum /tmp/quality/* > /tmp/quality/SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: cloak-browse-recovery
-          path: |
-            /tmp/cloak-browse-maintenance.tar.gz
-            /tmp/recovery
+          name: cloak-browse-quality-fixes
+          path: /tmp/quality
           if-no-files-found: error
           retention-days: 1
