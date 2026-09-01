@@ -26,7 +26,6 @@ EXPECTED_HELPERS = {
     "press_key",
     "switch_tab",
     "type_text",
-    "visible_text",
     "wait_for_element",
     "wait_for_load",
 }
@@ -50,7 +49,7 @@ def test_browser_harness_helper_contract():
     installed_version("browser-harness")
     import browser_harness.helpers as helpers
 
-    assert EXPECTED_HELPERS <= set(dir(helpers))
+    assert set(dir(helpers)) >= EXPECTED_HELPERS
     assert "Input.insertText" in inspect.getsource(helpers.type_text)
 
 

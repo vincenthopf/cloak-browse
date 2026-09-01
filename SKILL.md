@@ -24,16 +24,16 @@ Before starting, inspect `cloak-browse status --json`. Do not start when `state`
 ```bash
 cloak-browse run "new_tab('https://example.com')"
 cloak-browse run "print(page_info())"
-cloak-browse run "print(visible_text()[:2000])" --timeout 30
+cloak-browse run "print(js('document.body.innerText')[:2000])" --timeout 30
 ```
 
 The code argument is trusted Python, not a sandbox. Never interpolate untrusted content into it. `--timeout` terminates the runner subprocess and returns `124`.
 
 Supported helpers in the pinned browser-harness release include:
 
-- Navigation and state: `new_tab`, `goto_url`, `page_info`, `visible_text`, `list_tabs`, `switch_tab`
+- Navigation and state: `new_tab`, `goto_url`, `page_info`, `js`, `list_tabs`, `switch_tab`
 - Interaction: `click_at_xy`, `fill_input`, `type_text`, `press_key`
-- Low-level and waits: `js`, `cdp`, `capture_screenshot`, `wait_for_load`, `wait_for_element`
+- Low-level and waits: `cdp`, `capture_screenshot`, `wait_for_load`, `wait_for_element`
 
 ## Text entry
 

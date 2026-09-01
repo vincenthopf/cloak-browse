@@ -44,7 +44,10 @@ def validate(dist: Path) -> list[str]:
         errors.append(f"missing wheel {wheel.name}")
     if not sdist.is_file():
         errors.append(f"missing sdist {sdist.name}")
-    extras = sorted(path.name for path in dist.iterdir() if path not in {wheel, sdist})
+    ignored = {dist / ".gitignore"}
+    extras = sorted(
+        path.name for path in dist.iterdir() if path not in {wheel, sdist, *ignored}
+    )
     if extras:
         errors.append(f"unexpected distribution files: {', '.join(extras)}")
     if wheel.is_file():

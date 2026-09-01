@@ -50,7 +50,7 @@ Run trusted Python through browser-harness:
 ```bash
 cloak-browse run "new_tab('https://example.com')"
 cloak-browse run "print(page_info())"
-cloak-browse run "print(visible_text()[:2000])" --timeout 30
+cloak-browse run "print(js('document.body.innerText')[:2000])" --timeout 30
 ```
 
 Inspect or stop the managed session:
@@ -133,7 +133,7 @@ Other command exit behavior:
 
 The pinned browser-harness release provides these supported helpers:
 
-`new_tab`, `goto_url`, `page_info`, `visible_text`, `js`, `click_at_xy`, `fill_input`, `type_text`, `press_key`, `capture_screenshot`, `wait_for_load`, `wait_for_element`, `list_tabs`, and `switch_tab`.
+`new_tab`, `goto_url`, `page_info`, `js`, `click_at_xy`, `fill_input`, `type_text`, `press_key`, `capture_screenshot`, `wait_for_load`, `wait_for_element`, `list_tabs`, and `switch_tab`.
 
 Use `type_text("text")` for normal text entry. It uses CDP `Input.insertText`. Direct CDP is also available:
 
