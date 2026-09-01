@@ -165,6 +165,13 @@ jobs:
           ''',
           )
           path.write_text(text)
+
+          path = Path("cloak_browse/cli.py")
+          text = path.read_text().replace(
+              '    parser.error(f"unknown command {args.command!r}")\n    return 2\n',
+              '    parser.error(f"unknown command {args.command!r}")\n',
+          )
+          path.write_text(text)
           PY
           uv run ruff format .
           uv run ruff check .
