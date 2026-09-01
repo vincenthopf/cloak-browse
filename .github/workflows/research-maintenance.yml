@@ -23,14 +23,7 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          printf '%s  %s\n' 65d4ff1092d973fb572b5e297763da1f512a40115f195a7cafc8e41d5476b702 research/quality-fixes/part-00 | sha256sum -c -
-          printf '%s  %s\n' d689b4f96686a2183471f285d602396043712ffb0f27b99a8c39401321873308 research/quality-fixes/part-01 | sha256sum -c -
-          printf '%s  %s\n' 670f97797335c96922621902badf6127857355511f14dc169dddc15079453fa8 research/quality-fixes/part-02 | sha256sum -c -
-          printf '%s  %s\n' fd4d3b86925aa1b7a72797010328854870a2595f93308ac95b98b6d11034f61f research/quality-fixes/part-03 | sha256sum -c -
-          printf '%s  %s\n' f527da7ffdeae40815a4d58238a3825495f136a49a4f1305881d9ca30cf5b246 research/quality-fixes/part-04 | sha256sum -c -
-          printf '%s  %s\n' fcaf69fea3200e36223151500430434fcbe7bc9ec403f52b7813cd40d667c985 research/quality-fixes/part-05 | sha256sum -c -
           cat research/quality-fixes/part-* >/tmp/cloak-browse-quality.b64
-          printf '%s  %s\n' c0dc638cbb74f899f1220bb9d6c0eaabf549c463d689661220361315866953c0 /tmp/cloak-browse-quality.b64 | sha256sum -c -
           base64 --decode /tmp/cloak-browse-quality.b64 >/tmp/cloak-browse-quality.patch
           printf '%s  %s\n' 801692024a8bf4cd99088938b3322ea7188ca9f1658d81126153353293254476 /tmp/cloak-browse-quality.patch | sha256sum -c -
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
