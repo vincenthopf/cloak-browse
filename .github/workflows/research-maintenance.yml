@@ -1,4 +1,4 @@
-name: Generate final quality fixes
+name: Publish final quality fixes
 
 on:
   push:
@@ -8,10 +8,10 @@ on:
       - .github/workflows/research-maintenance.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  quality:
+  publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,22 +24,159 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin maintenance/cloak-browse-hardening
-          git switch --detach origin/maintenance/cloak-browse-hardening
+          git switch -C maintenance/cloak-browse-hardening origin/maintenance/cloak-browse-hardening
           uv python install 3.13
           uv sync --frozen --python 3.13
           uv run ruff check . --fix --unsafe-fixes || true
           uv run ruff format .
-          mkdir -p /tmp/quality
-          git diff --binary > /tmp/quality/ruff-fixes.patch
-          uv run ruff check . > /tmp/quality/ruff-check.txt 2>&1 || true
-          uv run mypy > /tmp/quality/mypy.txt 2>&1 || true
-          uv run pytest > /tmp/quality/pytest.txt 2>&1 || true
-          cp .venv/bin/ruff /tmp/quality/ruff
-          tar --exclude=.git --exclude=.venv -czf /tmp/quality/auto-fixed-working-tree.tar.gz .
-          sha256sum /tmp/quality/* > /tmp/quality/SHA256SUMS
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cloak-browse-quality-fixes
-          path: /tmp/quality
-          if-no-files-found: error
-          retention-days: 1
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("cloak_browse/runtime.py")
+          text = path.read_text()
+          text = text.replace(
+              '''            print(
+                          f"launching stealth chromium ({session.mode}, {session.backend} backend, "
+                          f"CDP on :{session.cdp_port})...",
+                          file=self.stdout,
+                      )
+          ''',
+              '''            launch_mode = f"{session.mode}, {session.backend} backend"
+                      print(
+                          f"launching stealth chromium ({launch_mode}, "
+                          f"CDP on :{session.cdp_port})...",
+                          file=self.stdout,
+                      )
+          ''',
+          )
+          text = text.replace(
+              '''            self._error(
+                          snapshot.error
+                          or "the recorded browser is unavailable or the CDP endpoint is not owned"
+                      )
+          ''',
+              '''            endpoint_error = (
+                          "the recorded browser is unavailable or the CDP endpoint is not owned"
+                      )
+                      self._error(snapshot.error or endpoint_error)
+          ''',
+          )
+          text = text.replace(
+              '                "CloakBrowse did not signal a PID because ownership cannot be proven safely"\n',
+              '                "CloakBrowse did not signal a PID because ownership cannot be "\n'
+              '                "proven safely"\n',
+          )
+          text = text.replace(
+              '''            errors.append(
+                          f"CDP port {session.cdp_port} was reused by another process and was left untouched"
+                      )
+          ''',
+              '''            errors.append(
+                          f"CDP port {session.cdp_port} was reused by another process "
+                          "and was left untouched"
+                      )
+          ''',
+          )
+          text = text.replace(
+              '''            self._error(
+                          "shutdown left managed state behind; run `cloak-browse status` for details"
+                      )
+          ''',
+              '''            self._error(
+                          "shutdown left managed state behind; run `cloak-browse status` "
+                          "for details"
+                      )
+          ''',
+          )
+          path.write_text(text)
+
+          path = Path("scripts/check_dist.py")
+          text = path.read_text().replace(
+              '''                errors.append(
+                              "wheel dependencies differ: "
+                              f"expected {sorted(EXPECTED_DEPENDENCIES)}, got {sorted(dependencies)}"
+                          )
+          ''',
+              '''                expected = sorted(EXPECTED_DEPENDENCIES)
+                          actual = sorted(dependencies)
+                          errors.append(
+                              f"wheel dependencies differ: expected {expected}, got {actual}"
+                          )
+          ''',
+          )
+          path.write_text(text)
+
+          path = Path("tests/test_runtime_lifecycle.py")
+          text = path.read_text().replace(
+              '''        alive_states=None,
+                  start_result=HarnessResult(True, None),
+                  stop_result=HarnessResult(True, None),
+                  execute_result=0,
+              ):
+                  self.alive_states = list(alive_states or [HarnessState(False, None)])
+                  self.start_result = start_result
+                  self.stop_result = stop_result
+          ''',
+              '''        alive_states=None,
+                  start_result=None,
+                  stop_result=None,
+                  execute_result=0,
+              ):
+                  self.alive_states = list(alive_states or [HarnessState(False, None)])
+                  self.start_result = (
+                      HarnessResult(True, None) if start_result is None else start_result
+                  )
+                  self.stop_result = (
+                      HarnessResult(True, None) if stop_result is None else stop_result
+                  )
+          ''',
+          )
+          path.write_text(text)
+
+          path = Path("tests/test_runtime_status.py")
+          text = path.read_text().replace(
+              '''    cdp_value,
+              harness_state=HarnessState(False, None),
+              owner_alive=False,
+          ):
+              stdout = io.StringIO()
+          ''',
+              '''    cdp_value,
+              harness_state=None,
+              owner_alive=False,
+          ):
+              if harness_state is None:
+                  harness_state = HarnessState(False, None)
+              stdout = io.StringIO()
+          ''',
+          )
+          path.write_text(text)
+
+          path = Path("cloak_browse/process_identity.py")
+          text = path.read_text().replace(
+              '''    try:
+                  kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+          ''',
+              '''    try:
+                  load_library = getattr(ctypes, "WinDLL", None)
+                  if load_library is None:
+                      return None
+                  kernel32 = load_library("kernel32", use_last_error=True)
+          ''',
+          )
+          path.write_text(text)
+          PY
+          uv run ruff format .
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy
+          uv run pytest
+          uv run python scripts/check_release.py
+          uv build
+          uv run python scripts/check_dist.py
+          git diff --check
+          git config user.name "Vincent Hopf"
+          git config user.email "51283084+vincenthopf@users.noreply.github.com"
+          git add -u
+          git commit -m "fix: satisfy quality and platform contracts"
+          git push origin HEAD:maintenance/cloak-browse-hardening
