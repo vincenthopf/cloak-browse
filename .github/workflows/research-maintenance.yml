@@ -35,10 +35,7 @@ jobs:
           uv run mypy > /tmp/quality/mypy.txt 2>&1 || true
           uv run pytest > /tmp/quality/pytest.txt 2>&1 || true
           cp .venv/bin/ruff /tmp/quality/ruff
-          git archive --format=tar.gz --output=/tmp/quality/auto-fixed-source.tar.gz HEAD
-          tar -xzf /tmp/quality/auto-fixed-source.tar.gz -C /tmp/quality
-          git apply /tmp/quality/ruff-fixes.patch
-          tar -czf /tmp/quality/auto-fixed-working-tree.tar.gz --exclude=.git --exclude=.venv .
+          tar --exclude=.git --exclude=.venv -czf /tmp/quality/auto-fixed-working-tree.tar.gz .
           sha256sum /tmp/quality/* > /tmp/quality/SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
