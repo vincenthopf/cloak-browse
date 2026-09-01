@@ -2,45 +2,123 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - "maintenance/**"
   pull_request:
-    branches: [main]
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: "0.10.0"
+          enable-cache: true
+      - run: uv python install 3.13
+      - run: uv sync --frozen --python 3.13
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run python scripts/check_release.py
+      - run: git diff --check
+
+  fast:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.11", "3.12", "3.13"]
-
+    env:
+      CLOAK_BROWSE_CACHE_DIR: ${{ github.workspace }}/.cloak-browse-fast
+      CLOAK_BROWSE_VERIFY_DEPS: "1"
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
         with:
-          version: "latest"
+          version: "0.10.0"
+          enable-cache: true
+      - run: uv python install ${{ matrix.python }}
+      - run: uv sync --frozen --python ${{ matrix.python }}
+      - run: uv run pytest
+      - run: uv run cloak-browse --help
+      - run: uv run python -c "import json, subprocess; result = subprocess.run(['cloak-browse', 'status', '--json'], check=True, capture_output=True, text=True); json.loads(result.stdout); assert result.stderr == ''"
 
-      - name: Set up Python
-        run: uv python install ${{ matrix.python }}
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: "0.10.0"
+          enable-cache: true
+      - run: uv python install 3.13
+      - run: uv sync --frozen --python 3.13
+      - run: uv build
+      - run: uv run python scripts/check_dist.py
+      - run: uv venv .package-smoke --python 3.13
+      - run: uv pip install --python .package-smoke/bin/python dist/*.whl
+      - run: .package-smoke/bin/cloak-browse --help
+      - env:
+          CLOAK_BROWSE_CACHE_DIR: ${{ runner.temp }}/cloak-browse-package
+        run: .package-smoke/bin/python -c "import json, subprocess; result = subprocess.run(['.package-smoke/bin/cloak-browse', 'status', '--json'], check=True, capture_output=True, text=True); json.loads(result.stdout); assert result.stderr == ''"
 
-      - name: Install
-        run: uv sync --python ${{ matrix.python }}
-
-      - name: Verify CLI entrypoint
-        run: uv run cloak-browse --help
-
-      - name: Verify imports
+  browser-integration:
+    runs-on: ubuntu-latest
+    env:
+      CLOAK_BROWSE_CACHE_DIR: ${{ github.workspace }}/.cloak-browse-browser
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: "0.10.0"
+          enable-cache: true
+      - run: uv python install 3.13
+      - run: uv sync --frozen --python 3.13
+      - run: uv run python -c "from cloakbrowser.download import ensure_binary; print(ensure_binary())"
+      - shell: bash
         run: |
-          uv run python -c "from cloak_browse.cli import main; print('cli: ok')"
-          uv run python -c "from cloakbrowser import launch; print('cloakbrowser: ok')"
-          uv run python -c "from browser_harness import helpers; print('browser-harness: ok')"
-
-      - name: Verify stealth binary download
-        run: |
-          uv run python -c "
-          from cloakbrowser.download import ensure_binary
-          path = ensure_binary()
-          print(f'binary: {path}')
-          assert path, 'binary download failed'
-          "
+          set -euo pipefail
+          log="$RUNNER_TEMP/cloak-browse-start.log"
+          status="$RUNNER_TEMP/cloak-browse-status.json"
+          uv run cloak-browse start --headless >"$log" 2>&1 &
+          owner=$!
+          cleanup() {
+            uv run cloak-browse stop >/dev/null 2>&1 || true
+            kill "$owner" >/dev/null 2>&1 || true
+            wait "$owner" >/dev/null 2>&1 || true
+            cat "$log"
+          }
+          trap cleanup EXIT
+          running=0
+          for _ in $(seq 1 90); do
+            uv run cloak-browse status --json >"$status" 2>"$RUNNER_TEMP/cloak-browse-status.err" || true
+            if uv run python -c "import json; raise SystemExit(0 if json.load(open('$status'))['state'] == 'running' else 1)"; then
+              running=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$running" -ne 1 ]; then
+            cat "$status" || true
+            cat "$RUNNER_TEMP/cloak-browse-status.err" || true
+            exit 1
+          fi
+          uv run cloak-browse run "print(page_info())" --timeout 20
+          uv run cloak-browse stop
+          wait "$owner"
+          trap - EXIT
+          cat "$log"
+          uv run python -c "import json, subprocess; result = subprocess.run(['cloak-browse', 'status', '--json'], check=True, capture_output=True, text=True); assert json.loads(result.stdout)['state'] == 'stopped'"

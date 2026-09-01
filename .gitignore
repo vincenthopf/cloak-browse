@@ -1,8 +1,10 @@
 __pycache__/
-*.pyc
+*.py[cod]
 .venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 *.egg-info/
-dist/
 build/
-uv.lock
-.python-version
+dist/
+.working/
