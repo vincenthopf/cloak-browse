@@ -6,6 +6,7 @@ on:
       - research/cloak-browse-escli-docs
     paths:
       - pyproject.toml
+      - cloak_browse/_version.py
       - .github/workflows/research-maintenance.yml
 
 permissions:
