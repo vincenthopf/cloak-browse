@@ -2,7 +2,7 @@
 
 - escli: escli v0.21.1
 endpoint  https://ai.eightstate.co/v1
-- generated: 2026-09-01T10:44:21Z
+- generated: 2026-09-01T10:47:07Z
 
 ## browser-harness search
 
@@ -14,12 +14,12 @@ endpoint  https://ai.eightstate.co/v1
     state=finalized  stars=6395  Browser Harness is a self-healing LLM automation framework that provides direct 
   /deepseek-ai/deepseek-harness            DeepSeek Harness
     state=finalized  stars=49097  DeepSeek Harness is an open-source, plugin-based agent harness developed by Deep
-  /koorchik/mui-harness                    MUI Harness
-    state=finalized  stars=0  MUI Harness is a TypeScript library providing test harnesses for Material UI com
-  /koorchik/dom-harness                    Dom Harness
-    state=finalized  stars=0  Dom Harness is a lightweight DOM component test harness library that provides a 
+  /websites/deepseek-harness_github_io_deepseek-harness_en DeepSeek Harness
+    state=finalized  stars=-1  DeepSeek Harness is an extensible plugin-based framework and runtime for buildin
   /pydantic/pydantic-ai-harness            Pydantic AI Harness
     state=finalized  stars=742  Pydantic AI Harness is the official capability library for Pydantic AI, providin
+  /sondera-ai/sondera-harness-python       Sondera Harness
+    state=finalized  stars=26  Sondera Harness is an open-source framework providing deterministic guardrails f
 
 
 [exit 0]
@@ -105,24 +105,6 @@ def normalize_launch_params(params: Dict) -> None:
         params["executablePath"] = str(Path(params["executablePath"]))
 ```
 
---------------------------------
-
-### Video.path() docs: guaranteed to be written upon closing browser context
-
-Source: https://github.com/microsoft/playwright-python/blob/main/playwright/sync_api/_generated.py
-
-The generated API docstring confirms the video is guaranteed to be written to the filesystem upon closing the browser context.
-
-```python
-def path(self) -> pathlib.Path:
-    """Video.path
-
-    Returns the file system path this video will be recorded to. The video is guaranteed to be written to the
-    filesystem upon closing the browser context. This method throws when connected remotely.
-    """
-    return mapping.from_maybe_impl(self._sync(self._impl_obj.path()))
-```
-
 [exit 0]
 ```
 
@@ -202,38 +184,29 @@ context = await browser.new_context(
 
 --------------------------------
 
-### Replace Playwright with Patchright
+### Launch Browser with Custom Configuration
 
-Source: https://github.com/kaliiiiiiiiii-vinyzu/patchright-python/blob/main/_autodocs/cli-reference.md
+Source: https://github.com/kaliiiiiiiiii-vinyzu/patchright-python/blob/main/_autodocs/README.md
 
-Demonstrates the drop-in replacement syntax for existing Playwright workflows.
-
-```bash
-# Before
-playwright install chromium && pytest tests/
-
-# After
-patchright install chromium && pytest tests/
-```
-
---------------------------------
-
-### Example generated Python code
-
-Source: https://github.com/kaliiiiiiiiii-vinyzu/patchright-python/blob/main/_autodocs/cli-reference.md
-
-The resulting Python code structure after running the codegen command.
+Configure browser launch parameters including headless mode, proxy settings, and custom environment variables.
 
 ```python
-from patchright.sync_api import sync_playwright
-
-with sync_playwright() as p:
-    browser = p.chromium.launch()
-    page = browser.new_page()
-    page.goto("https://example.com")
-    # ... recorded actions ...
-    browser.close()
+browser = await playwright.chromium.launch(
+    channel="chrome",
+    headless=False,
+    args=["--start-maximized"],
+    proxy={"server": "http://proxy:port"},
+    downloads_path="/tmp/downloads",
+    slow_mo=100,
+    env={"CUSTOM_VAR": "value"},
+)
 ```
+
+### Key Features > Full Playwright Compatibility
+
+Source: https://github.com/kaliiiiiiiiii-vinyzu/patchright-python/blob/main/_autodocs/README.md
+
+Patchright serves as a drop-in replacement for Playwright Python, maintaining an identical API surface and CLI interface. It is designed to work seamlessly with existing Playwright codebases while offering additional extensions.
 
 [exit 0]
 ```
@@ -242,34 +215,6 @@ with sync_playwright() as p:
 
 ```text
   → resolved: /python-websockets/websockets
-### Connect a synchronous WebSocket client
-
-Source: https://github.com/python-websockets/websockets/blob/main/docs/intro/examples.rst
-
-Uses connect() as a context manager to ensure the WebSocket connection is closed after the block finishes.
-
-```python
-#!/usr/bin/env python
-
-from websockets.sync.client import connect
-
-def hello():
-    uri = "ws://localhost:8765"
-    with connect(uri) as websocket:
-        name = input("What's your name? ")
-
-        websocket.send(name)
-        print(f">>> {name}")
-
-        greeting = websocket.recv()
-        print(f"<<< {greeting}")
-
-if __name__ == "__main__":
-    hello()
-```
-
---------------------------------
-
 ### websockets.sync.client.connect
 
 Source: https://github.com/python-websockets/websockets/blob/main/docs/reference/sync/client.rst
@@ -337,20 +282,14 @@ Connects to the WebSocket server at the provided URI. This function returns a Cl
 
 --------------------------------
 
-### Default timeout and max_size values in asyncio connect()
+### connect() default signature
 
-Source: https://github.com/python-websockets/websockets/blob/main/src/websockets/asyncio/client.py
+Source: https://github.com/python-websockets/websockets/blob/main/src/websockets/sync/client.py
 
-Default values for connect() in websockets.asyncio.client
+Default close_timeout is 10 seconds in the connect() function at src/websockets/sync/client.py
 
 ```python
-        # Timeouts
-        open_timeout: float | None = 10,
-        ping_interval: float | None = 20,
-        ping_timeout: float | None = 20,
-        close_timeout: float | None = 10,
-        # Limits
-        max_size: int | None | tuple[int | None, int | None] = 2**20,
+    close_timeout: float | None = 10,
 ```
 
 --------------------------------
@@ -372,6 +311,27 @@ websockets.exceptions.ConnectionClosedError: no close frame received or sent
 Traceback (most recent call last):
   ...
 websockets.exceptions.ConnectionClosedError: no close frame received or sent
+```
+
+--------------------------------
+
+### Handle ConnectionClosedError for keepalive timeout
+
+Source: https://github.com/python-websockets/websockets/blob/main/docs/faq/connection.rst
+
+Traceback examples for connection closure due to excessive latency.
+
+```pytb
+connection handler failed
+Traceback (most recent call last):
+  ...
+websockets.exceptions.ConnectionClosedError: sent 1011 (internal error) keepalive ping timeout; no close frame received
+```
+
+```pytb
+Traceback (most recent call last):
+  ...
+websockets.exceptions.ConnectionClosedError: sent 1011 (internal error) keepalive ping timeout; no close frame received
 ```
 
 [exit 0]
