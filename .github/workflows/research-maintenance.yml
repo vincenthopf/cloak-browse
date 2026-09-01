@@ -22,26 +22,19 @@ jobs:
           version: "0.10.0"
       - run: uv python install 3.13
       - run: uv lock
+      - run: npm install --global @eightstate/escli@0.21.1
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p research .tools/escli
-          curl -fsSL "https://github.com/eight-state/eightstate/releases/download/escli-v0.21.1/escli-v0.21.1-linux-x64-baseline.tar.gz" -o .tools/escli/archive.tar.gz
-          printf '%s  %s\n' "45c8c1505fb2025c4ca26a88ebb043efc240aafebcf21c129247a21de6eee946" ".tools/escli/archive.tar.gz" | sha256sum -c -
-          tar -xzf .tools/escli/archive.tar.gz -C .tools/escli
-          escli="$(find .tools/escli -type f -name escli -perm -u+x | head -n 1)"
-          if [ -z "$escli" ]; then
-            escli="$(find .tools/escli -type f -name escli | head -n 1)"
-            chmod +x "$escli"
-          fi
+          mkdir -p research
           report="research/escli-docs.md"
-          printf '# escli docs research\n\n- escli: v0.21.1\n- generated: %s\n\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$report"
+          printf '# escli docs research\n\n- escli: %s\n- generated: %s\n\n' "$(escli --version)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$report"
           run_doc() {
             title="$1"
             shift
             printf '## %s\n\n```text\n' "$title" >>"$report"
             set +e
-            "$escli" "$@" >>"$report" 2>&1
+            escli "$@" >>"$report" 2>&1
             code=$?
             set -e
             printf '\n[exit %s]\n```\n\n' "$code" >>"$report"
