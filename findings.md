@@ -49,7 +49,9 @@ A listener on `9333` before startup is a hard collision. CloakBrowse does not at
 
 The pinned browser-harness release uses an AF_UNIX socket on POSIX and an authenticated loopback TCP endpoint on Windows. CloakBrowse supplies a short, per-session `BH_RUNTIME_DIR` plus private per-session temporary and configuration directories. This prevents the global daemon name `cloak` from colliding across stale runtime files.
 
-Daemon startup and shutdown run through browser-harness's public administration functions. Its shutdown path verifies the daemon over live IPC before any internal escalation. CloakBrowse does not read or signal a harness PID itself.
+Daemon startup uses browser-harness's public administration function. The session remains in `starting` until that daemon is verified, so `run` cannot race startup and create a second daemon. This avoids the unresolved upstream race in `browser-use/browser-harness#692`.
+
+Shutdown uses the pinned release's authenticated IPC functions because its `restart_daemon()` liveness loop is not portable to Windows and can remove endpoint metadata while the daemon still owns files. CloakBrowse requests graceful shutdown over live IPC, waits on a process-start token, and removes endpoint files only after the verified process exits. It never signals a harness PID.
 
 ### Session state
 
@@ -86,15 +88,14 @@ Stopped and partial states use explicit `null` values rather than missing locals
 The maintenance release pins a tested set:
 
 - `browser-harness==0.1.10`
-- `cloakbrowser==0.3.25`
-- `patchright==1.58.2`
-- `playwright==1.58.0`
-- `platformdirs==4.11.3`
+- `cloakbrowser==0.5.10`
+- `playwright==1.62.0`
+- `platformdirs==4.11.7`
 - `websockets==15.0.1`
 
-CloakBrowser 0.3.25 is intentional. Later CloakBrowser releases removed the `backend` parameter, while CloakBrowse currently exposes `--backend patchright|playwright`. Moving to that newer API would be a compatibility change rather than maintenance.
+CloakBrowser 0.4.0 removed its optional Patchright backend because the patched browser already suppresses automation signals at the binary layer. CloakBrowse now uses the current stock-Playwright launch API and no longer installs Patchright. The deprecated `--backend patchright|playwright` option remains accepted for command compatibility; `patchright` produces a diagnostic and maps to Playwright. Legacy session records that identify their old backend remain readable for safe recovery.
 
-`browser-harness` is now a released package instead of a mutable Git branch. Every directly imported runtime dependency is declared. `uv.lock` is the complete resolution and must be updated with the direct pins as one compatibility set.
+`browser-harness` is a released package instead of a mutable Git branch. Every directly imported runtime dependency is declared. Its current release requires `websockets==15.0.1`, so that older direct pin is retained while the rest of the compatible set is current. `uv.lock` must be updated and tested with all direct pins as one compatibility set.
 
 ## Text entry decision
 
@@ -109,7 +110,7 @@ Fast tests avoid browser downloads, real ports, and real daemons. They inject fi
 - missing, corrupt, partial, stale, foreign, and orphaned state
 - atomic file replacement and permissions
 - CDP HTTP, WebSocket, timeout, malformed JSON, and wrong-browser behavior
-- daemon success, timeout, log-tail reporting, isolation, and cleanup
+- daemon success, timeout, log-tail reporting, isolation, authenticated shutdown, PID reuse, transient Windows locks, and cleanup
 - Linux, macOS, and Windows process identity branches
 - proxy redaction
 - startup interruption, shutdown, and timeout behavior

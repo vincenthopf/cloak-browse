@@ -163,7 +163,7 @@ def options(proxy=None):
         profile=None,
         headless=False,
         humanize=False,
-        backend="patchright",
+        backend="playwright",
     )
 
 
@@ -178,11 +178,44 @@ def test_start_happy_path_closes_browser_daemon_and_session(app_paths):
     assert browser.handle.closed is True
     assert len(harness.start_calls) == 1
     assert len(harness.stop_calls) == 1
+    assert [record.phase for record in store.writes] == [
+        "starting",
+        "starting",
+        "running",
+    ]
     assert store.load().record is None
     assert any(
         item.proxy_endpoint == "http://proxy.example:8080" for item in store.writes
     )
     assert all("user:pass" not in str(item.to_dict()) for item in store.writes)
+
+
+def test_deprecated_patchright_flag_uses_playwright(app_paths):
+    store = RecordingStore(app_paths)
+    cdp = SequenceCdp([stopped_snapshot(), stopped_snapshot()])
+    harness = FakeHarness(alive_states=[HarnessState(False, None)])
+    browser = FakeBrowserLauncher()
+    runtime = make_runtime(app_paths, cdp, harness, browser=browser, store=store)
+    runtime._wait_for_shutdown = lambda session, client: 0
+    legacy_options = options()
+    legacy_options = StartOptions(
+        proxy=legacy_options.proxy,
+        profile=legacy_options.profile,
+        headless=legacy_options.headless,
+        humanize=legacy_options.humanize,
+        backend="patchright",
+    )
+
+    assert runtime.start(legacy_options) == 0
+    assert browser.launch_options[0].__dict__ == {
+        "cdp_port": 9333,
+        "proxy": None,
+        "profile": None,
+        "headless": False,
+        "humanize": False,
+    }
+    assert store.writes[0].backend == "playwright"
+    assert "--backend patchright is deprecated" in runtime.stderr.getvalue()
 
 
 def test_start_refuses_foreign_cdp_listener(app_paths):
@@ -321,6 +354,49 @@ def test_stop_owner_gone_cleans_daemon_when_browser_is_absent(
     assert runtime.stop() == 0
     assert harness.stop_calls == [session_record]
     assert store.load().record is None
+
+
+def test_cleanup_failure_preserves_stale_session_for_retry(app_paths, session_record):
+    store = SessionStore(app_paths)
+    store.write(session_record)
+    harness = FakeHarness(alive_states=[HarnessState(False, None)])
+
+    def fail_cleanup(session):
+        raise PermissionError("bu.log remains locked")
+
+    harness.cleanup = fail_cleanup
+    runtime = make_runtime(
+        app_paths,
+        SequenceCdp([stopped_snapshot()]),
+        harness,
+        store=store,
+        owner_alive=False,
+    )
+
+    assert runtime.stop() == 1
+    assert store.load().record == session_record
+    assert "bu.log remains locked" in runtime.stderr.getvalue()
+
+
+def test_run_cannot_race_harness_startup(app_paths, session_record):
+    starting = session_record.with_updates(phase="starting")
+    store = SessionStore(app_paths)
+    store.write(starting)
+    cdp = SequenceCdp([running_snapshot()])
+    harness = FakeHarness()
+    runtime = make_runtime(
+        app_paths,
+        cdp,
+        harness,
+        store=store,
+        owner_alive=True,
+    )
+
+    assert runtime.run("pass", None) == 1
+    assert cdp.calls == []
+    assert harness.start_calls == []
+    assert harness.execute_calls == []
+    assert "session is starting" in runtime.stderr.getvalue()
 
 
 def test_run_restarts_daemon_and_propagates_execution(app_paths, session_record):

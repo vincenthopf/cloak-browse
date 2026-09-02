@@ -122,7 +122,10 @@ class SessionStore:
         temporary = Path(temporary_name)
         try:
             if os.name != "nt":
-                os.fchmod(fd, 0o600)
+                fchmod = getattr(os, "fchmod", None)
+                if fchmod is None:
+                    raise OSError("fchmod is unavailable on this POSIX platform")
+                fchmod(fd, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(payload)
                 handle.flush()

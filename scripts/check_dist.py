@@ -11,10 +11,9 @@ from check_release import package_version
 
 EXPECTED_DEPENDENCIES = {
     "browser-harness==0.1.10",
-    "cloakbrowser==0.3.25",
-    "patchright==1.58.2",
-    "platformdirs==4.11.3",
-    "playwright==1.58.0",
+    "cloakbrowser==0.5.10",
+    "platformdirs==4.11.7",
+    "playwright==1.62.0",
     "websockets==15.0.1",
 }
 REQUIRED_SDIST_PATHS = {

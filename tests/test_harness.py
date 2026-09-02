@@ -1,8 +1,49 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 
-from cloak_browse.harness import HarnessManager
+import pytest
+
+from cloak_browse.harness import HarnessManager, _stop_daemon
+
+
+class IpcConnection:
+    def __init__(self):
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+class FakeIpc:
+    def __init__(self, tmp_path, identities, ping=False, response=None):
+        self.tmp_path = tmp_path
+        self.identities = list(identities)
+        self.ping_result = ping
+        self.response = {"ok": True} if response is None else response
+        self.connection = IpcConnection()
+        self.requests = []
+        self.cleaned = []
+
+    def identify(self, name, timeout):
+        return self.identities.pop(0) if self.identities else None
+
+    def ping(self, name, timeout):
+        return self.ping_result
+
+    def connect(self, name, timeout):
+        return self.connection, "token"
+
+    def request(self, connection, token, request):
+        self.requests.append((connection, token, request))
+        return self.response
+
+    def cleanup_endpoint(self, name):
+        self.cleaned.append(name)
+
+    def pid_path(self, name):
+        return self.tmp_path / f"{name}.pid"
 
 
 class Runner:
@@ -77,11 +118,66 @@ def test_start_timeout_is_bounded(app_paths, session_record):
     assert "timed out" in result.error
 
 
-def test_stop_delegates_to_verified_upstream_shutdown(app_paths, session_record):
+def test_stop_delegates_to_verified_shutdown_worker(app_paths, session_record):
     runner = Runner([completed(0)])
     manager = HarnessManager(app_paths, runner=runner, environment={})
     assert manager.stop(session_record).ok is True
-    assert "restart_daemon" in runner.calls[0][0][-1]
+    assert "_stop_daemon" in runner.calls[0][0][-1]
+
+
+def test_stop_worker_waits_for_verified_daemon_exit(monkeypatch, tmp_path):
+    import browser_harness
+
+    ipc = FakeIpc(tmp_path, identities=[123, None])
+    tokens = iter(["windows:1", None])
+    monkeypatch.setattr(browser_harness, "_ipc", ipc, raising=False)
+    monkeypatch.setattr(
+        "cloak_browse.harness.process_start_token", lambda pid: next(tokens)
+    )
+    monkeypatch.setenv("BU_NAME", "cloak")
+
+    _stop_daemon()
+
+    assert ipc.requests == [(ipc.connection, "token", {"meta": "shutdown"})]
+    assert ipc.connection.closed is True
+    assert ipc.cleaned == ["cloak"]
+
+
+def test_stop_worker_rejects_daemon_error(monkeypatch, tmp_path):
+    import browser_harness
+
+    ipc = FakeIpc(
+        tmp_path,
+        identities=[123],
+        response={"ok": True, "error": "shutdown failed"},
+    )
+    monkeypatch.setattr(browser_harness, "_ipc", ipc, raising=False)
+    monkeypatch.setattr(
+        "cloak_browse.harness.process_start_token", lambda pid: "windows:1"
+    )
+    monkeypatch.setenv("BU_NAME", "cloak")
+
+    with pytest.raises(RuntimeError, match="shutdown failed"):
+        _stop_daemon()
+
+    assert ipc.cleaned == []
+
+
+def test_stop_worker_rejects_pid_reuse(monkeypatch, tmp_path):
+    import browser_harness
+
+    ipc = FakeIpc(tmp_path, identities=[123])
+    tokens = iter(["windows:1", "windows:2"])
+    monkeypatch.setattr(browser_harness, "_ipc", ipc, raising=False)
+    monkeypatch.setattr(
+        "cloak_browse.harness.process_start_token", lambda pid: next(tokens)
+    )
+    monkeypatch.setenv("BU_NAME", "cloak")
+
+    with pytest.raises(RuntimeError, match="PID 123 was reused"):
+        _stop_daemon()
+
+    assert ipc.cleaned == []
 
 
 def test_execute_propagates_exit_code(app_paths, session_record):
@@ -117,3 +213,46 @@ def test_cleanup_only_removes_session_scoped_directories(app_paths, session_reco
     assert not harness_paths.tmp_dir.exists()
     assert not harness_paths.config_dir.exists()
     assert unrelated.exists()
+
+
+def test_cleanup_retries_transient_windows_file_locks(
+    app_paths, session_record, monkeypatch
+):
+    manager = HarnessManager(app_paths, runner=Runner([]), environment={})
+    path = app_paths.harness(session_record.session_id).tmp_dir
+    path.mkdir(parents=True)
+    (path / "bu.log").write_text("x", encoding="utf-8")
+    real_rmtree = shutil.rmtree
+    attempts = []
+    sleeps = []
+
+    def flaky_rmtree(target):
+        attempts.append(target)
+        if len(attempts) < 3:
+            raise PermissionError("file is temporarily locked")
+        real_rmtree(target)
+
+    monkeypatch.setattr("cloak_browse.harness.shutil.rmtree", flaky_rmtree)
+    monkeypatch.setattr("cloak_browse.harness.time.sleep", sleeps.append)
+
+    manager.cleanup(session_record)
+
+    assert attempts == [path, path, path]
+    assert sleeps == [0.1, 0.1]
+    assert not path.exists()
+
+
+def test_cleanup_reports_persistent_file_locks(app_paths, session_record, monkeypatch):
+    manager = HarnessManager(app_paths, runner=Runner([]), environment={})
+    path = app_paths.harness(session_record.session_id).tmp_dir
+    path.mkdir(parents=True)
+    (path / "bu.log").write_text("x", encoding="utf-8")
+
+    def locked(_):
+        raise PermissionError("file remains locked")
+
+    monkeypatch.setattr("cloak_browse.harness.shutil.rmtree", locked)
+    monkeypatch.setattr("cloak_browse.harness.time.sleep", lambda _: None)
+
+    with pytest.raises(OSError, match="cannot remove harness directory"):
+        manager.cleanup(session_record)

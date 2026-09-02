@@ -45,7 +45,7 @@ def test_start_parser_preserves_cli_defaults():
     assert result == 11
     name, options = runtime.calls[0]
     assert name == "start"
-    assert options.backend == "patchright"
+    assert options.backend == "playwright"
     assert options.headless is False
     assert options.humanize is False
     assert options.proxy is None
@@ -64,7 +64,7 @@ def test_start_parser_passes_all_options():
             "--headless",
             "--humanize",
             "--backend",
-            "playwright",
+            "patchright",
         ],
         factory_for(runtime),
     )
@@ -74,7 +74,7 @@ def test_start_parser_passes_all_options():
     assert options.profile == "~/profile"
     assert options.headless is True
     assert options.humanize is True
-    assert options.backend == "playwright"
+    assert options.backend == "patchright"
 
 
 def test_run_parser_and_exit_code():

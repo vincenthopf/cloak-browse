@@ -87,7 +87,7 @@ jobs:
           enable-cache: true
       - run: uv python install 3.13
       - run: uv sync --frozen --python 3.13
-      - run: uv run python -c "from cloakbrowser.download import ensure_binary; print(ensure_binary())"
+      - run: uv run python -c "from cloakbrowser import ensure_binary; print(ensure_binary())"
       - shell: bash
         run: |
           set -euo pipefail
