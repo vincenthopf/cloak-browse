@@ -13,7 +13,6 @@ class BrowserOptions:
     profile: str | None
     headless: bool
     humanize: bool
-    backend: str
 
 
 @dataclass
@@ -26,7 +25,7 @@ class BrowserHandle:
 
 class BrowserLauncher:
     def ensure_binary(self) -> Path:
-        from cloakbrowser.download import ensure_binary
+        from cloakbrowser import ensure_binary
 
         return Path(ensure_binary())
 
@@ -41,7 +40,6 @@ class BrowserLauncher:
                 f"--remote-debugging-port={options.cdp_port}",
             ],
             "humanize": options.humanize,
-            "backend": options.backend,
         }
         if options.profile:
             resource = launch_persistent_context(

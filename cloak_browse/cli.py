@@ -33,8 +33,8 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument(
         "--backend",
         choices=["patchright", "playwright"],
-        default="patchright",
-        help="Playwright backend (default: patchright for max stealth)",
+        default="playwright",
+        help="Deprecated compatibility option; only playwright is supported",
     )
 
     run = commands.add_parser("run", help="Run trusted Python against the browser")

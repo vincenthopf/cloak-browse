@@ -101,6 +101,12 @@ class CloakBrowseRuntime:
             self._error("cannot establish a safe identity for the start process")
             return 1
 
+        if options.backend != "playwright":
+            self._diagnostic(
+                "--backend patchright is deprecated and no longer supported by "
+                "CloakBrowser; using playwright"
+            )
+
         timestamp = self._timestamp()
         session = SessionRecord(
             schema_version=SESSION_SCHEMA_VERSION,
@@ -113,7 +119,7 @@ class CloakBrowseRuntime:
             cdp_browser_id=None,
             daemon_name=DAEMON_NAME,
             browser_version=None,
-            backend=options.backend,
+            backend="playwright",
             mode="headless" if options.headless else "headed",
             profile=(
                 str(Path(options.profile).expanduser())
@@ -152,7 +158,6 @@ class CloakBrowseRuntime:
                     profile=options.profile,
                     headless=options.headless,
                     humanize=options.humanize,
-                    backend=options.backend,
                 )
             )
             ready = cdp.wait_ready(timeout=15.0)
@@ -161,7 +166,6 @@ class CloakBrowseRuntime:
                     ready.error or "CDP endpoint did not become WebSocket-ready"
                 )
             session = session.with_updates(
-                phase="running",
                 cdp_browser_id=ready.browser_id,
                 browser_version=ready.browser_version,
                 updated_at=self._timestamp(),
@@ -173,6 +177,11 @@ class CloakBrowseRuntime:
                 raise RuntimeError(
                     f"browser-harness daemon did not start: {daemon_start.error}"
                 )
+            session = session.with_updates(
+                phase="running",
+                updated_at=self._timestamp(),
+            )
+            self.store.write(session)
             self._print_start_summary(session)
             result = self._wait_for_shutdown(session, cdp)
         except KeyboardInterrupt:
@@ -324,9 +333,9 @@ class CloakBrowseRuntime:
             )
             return False
         try:
+            harness.cleanup(session)
             self.store.clear(expected_session_id=session.session_id)
             self.store.clear_stop(session.session_id)
-            harness.cleanup(session)
         except OSError as exc:
             self._error(f"cannot clear stale session state: {exc}")
             return False
@@ -444,9 +453,9 @@ class CloakBrowseRuntime:
                 errors.append(f"cannot preserve orphaned session state: {exc}")
         else:
             try:
+                harness.cleanup(session)
                 self.store.clear(expected_session_id=session.session_id)
                 self.store.clear_stop(session.session_id)
-                harness.cleanup(session)
             except OSError as exc:
                 errors.append(f"session cleanup failed: {exc}")
         if snapshot.listener and snapshot.owned is False:
@@ -499,9 +508,9 @@ class CloakBrowseRuntime:
             )
             return 1
         try:
+            harness.cleanup(session)
             self.store.clear(expected_session_id=session.session_id)
             self.store.clear_stop(session.session_id)
-            harness.cleanup(session)
         except OSError as exc:
             self._error(f"cannot clear session state: {exc}")
             return 1

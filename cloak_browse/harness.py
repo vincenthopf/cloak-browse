@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shutil
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +13,7 @@ from typing import Any
 
 from .models import SessionRecord
 from .paths import AppPaths, ensure_private_dir
+from .process_identity import process_start_token
 
 
 @dataclass(frozen=True)
@@ -89,11 +92,7 @@ class HarnessManager:
         return HarnessResult(False, self._result_error(result, session))
 
     def stop(self, session: SessionRecord) -> HarnessResult:
-        script = (
-            "import os\n"
-            "from browser_harness.admin import restart_daemon\n"
-            "restart_daemon(os.environ['BU_NAME'])\n"
-        )
+        script = "from cloak_browse.harness import _stop_daemon\n_stop_daemon()\n"
         try:
             result = self._run(script, session, timeout=25, capture=True)
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -194,16 +193,84 @@ class HarnessManager:
         return " | ".join(values)[:1200] or f"process exited {result.returncode}"
 
 
+def _stop_daemon() -> None:
+    from browser_harness import _ipc as ipc
+
+    name = os.environ["BU_NAME"]
+    daemon_pid = ipc.identify(name, timeout=2.0)
+    if daemon_pid is None:
+        if ipc.ping(name, timeout=1.0) or Path(ipc.pid_path(name)).exists():
+            raise RuntimeError(
+                f"daemon {name!r} is reachable or recorded but did not provide "
+                "a verifiable process identity"
+            )
+        return
+    daemon_started = process_start_token(daemon_pid)
+    if daemon_started is None:
+        raise RuntimeError(f"cannot establish process identity for daemon {name!r}")
+
+    connection = None
+    try:
+        connection, token = ipc.connect(name, timeout=3.0)
+        response = ipc.request(connection, token, {"meta": "shutdown"})
+    finally:
+        if connection is not None:
+            with contextlib.suppress(OSError):
+                connection.close()
+    if (
+        not isinstance(response, dict)
+        or response.get("ok") is not True
+        or bool(response.get("error"))
+    ):
+        error = response.get("error") if isinstance(response, dict) else None
+        raise RuntimeError(error or f"daemon {name!r} did not confirm shutdown")
+
+    deadline = time.monotonic() + 12.0
+    while time.monotonic() < deadline:
+        current_started = process_start_token(daemon_pid)
+        if current_started is None:
+            break
+        if current_started != daemon_started:
+            raise RuntimeError(
+                f"daemon PID {daemon_pid} was reused while shutdown was in progress"
+            )
+        time.sleep(0.1)
+    else:
+        raise RuntimeError(f"daemon {name!r} did not exit after shutdown")
+
+    replacement = ipc.identify(name, timeout=0.2)
+    if replacement is not None:
+        raise RuntimeError(
+            f"daemon endpoint {name!r} was replaced while shutdown was in progress"
+        )
+    for attempt in range(10):
+        try:
+            ipc.cleanup_endpoint(name)
+            Path(ipc.pid_path(name)).unlink(missing_ok=True)
+            return
+        except PermissionError:
+            if attempt == 9:
+                raise
+            time.sleep(0.1)
+
+
 def _remove_private_tree(path: Path, session_id: str) -> None:
     if session_id not in path.parts or not path.exists():
         return
-    for child in sorted(
-        path.rglob("*"), key=lambda item: len(item.parts), reverse=True
-    ):
-        with contextlib.suppress(OSError):
-            child.unlink() if child.is_file() or child.is_symlink() else child.rmdir()
-    with contextlib.suppress(OSError):
-        path.rmdir()
+    if path.is_symlink():
+        raise OSError(f"refusing to remove symlinked harness directory: {path}")
+    last_error: OSError | None = None
+    for attempt in range(20):
+        try:
+            shutil.rmtree(path)
+            return
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            last_error = exc
+        if attempt < 19:
+            time.sleep(0.1)
+    raise OSError(f"cannot remove harness directory {path}: {last_error}")
 
 
 def _brief_error(error: BaseException) -> str:

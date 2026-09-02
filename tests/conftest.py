@@ -30,7 +30,7 @@ def session_record():
         cdp_browser_id="browser-1",
         daemon_name="cloak",
         browser_version="Chrome/145",
-        backend="patchright",
+        backend="playwright",
         mode="headed",
         profile="(temporary)",
         proxy_endpoint="http://proxy.example:8080",

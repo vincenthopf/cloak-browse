@@ -42,7 +42,6 @@ cloak-browse start
 cloak-browse start --headless
 cloak-browse start --profile ~/.local/share/cloak-profile
 cloak-browse start --proxy http://user:pass@proxy.example:8080
-cloak-browse start --backend playwright
 ```
 
 Run trusted Python through browser-harness:
@@ -143,11 +142,11 @@ cloak-browse run "cdp('Input.insertText', text='hello@example.com')"
 
 Use `press_key()` for Enter, Tab, Escape, arrows, and shortcuts. Do not implement text entry with a per-character `press_key()` loop.
 
-For authenticated proxies, use `--backend playwright`. CloakBrowser 0.3.25 documents that its Patchright backend does not support proxy authentication.
+CloakBrowser uses stock Playwright and supports authenticated proxies directly. The deprecated `--backend` option remains accepted for command compatibility, but `patchright` is mapped to Playwright with a diagnostic because CloakBrowser removed Patchright support in 0.4.0.
 
 ## Dependency and release policy
 
-Runtime dependencies are exact pins in `pyproject.toml`; `uv.lock` is the complete cross-platform resolution. CloakBrowser 0.3.25 is intentionally retained because it supports the existing `--backend patchright|playwright` CLI contract. Update CloakBrowser, Playwright, Patchright, browser-harness, and websockets as one tested set, then regenerate the lockfile and run all platform and browser integration jobs.
+Runtime dependencies are exact pins in `pyproject.toml`; `uv.lock` is the complete cross-platform resolution. CloakBrowser and Playwright are kept on their current compatible releases. Browser-harness currently requires websockets 15.0.1, so that package remains pinned until browser-harness supports a newer release. Regenerate the lockfile and run all platform and browser integration jobs whenever the tested set changes.
 
 `cloak_browse/_version.py` is the package version source. `scripts/check_release.py` verifies the Hatch version path, changelog, README, and release tag. Before creating `vX.Y.Z`, replace `Unreleased` in the matching changelog heading with an ISO date. The release workflow validates the exact tagged commit before publishing its wheel and sdist.
 

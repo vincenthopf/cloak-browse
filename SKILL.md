@@ -71,4 +71,4 @@ If `status --json` reports `orphaned`, close the remaining browser manually, the
 
 `status --json` emits one schema-versioned JSON value on stdout. Diagnostics use stderr. Exit `0` covers `stopped`, `starting`, `running`, and `stopping`; exit `1` covers invalid, stale, orphaned, degraded, and foreign states.
 
-Raw proxy credentials are not persisted or printed. For an authenticated proxy, start with `--backend playwright` because the pinned CloakBrowser Patchright backend does not support proxy authentication.
+Raw proxy credentials are not persisted or printed. CloakBrowser uses stock Playwright and supports authenticated proxies directly. Do not pass the deprecated `--backend` option in new commands.

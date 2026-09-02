@@ -28,6 +28,12 @@ def test_session_validation_rejects_unsafe_values(session_record, key, value, me
         SessionRecord.from_dict(data)
 
 
+def test_legacy_patchright_session_remains_readable(session_record):
+    data = session_record.to_dict()
+    data["backend"] = "patchright"
+    assert SessionRecord.from_dict(data).backend == "patchright"
+
+
 def test_session_requires_complete_record(session_record):
     data = session_record.to_dict()
     del data["owner_started"]
