@@ -54,7 +54,11 @@ class CloakBrowseRuntime:
         stdout: TextIO = sys.stdout,
         stderr: TextIO = sys.stderr,
         install_signal_handlers: bool = True,
+        cdp_port: int = CDP_PORT,
     ) -> None:
+        if not 1024 <= cdp_port <= 65535:
+            raise ValueError("CDP port must be between 1024 and 65535")
+        self.cdp_port = cdp_port
         self.paths = paths or app_paths()
         self.store = store or SessionStore(self.paths)
         self.cdp_factory = cdp_factory or (lambda host, port: CdpClient(host, port))
@@ -86,12 +90,12 @@ class CloakBrowseRuntime:
             if not self._recover_stale_session(read.record):
                 return 1
 
-        cdp = self.cdp_factory(CDP_HOST, CDP_PORT)
+        cdp = self.cdp_factory(CDP_HOST, self.cdp_port)
         collision = cdp.probe(include_tabs=False)
         if collision.listener:
             detail = collision.browser_version or collision.error or "unknown listener"
             self._error(
-                f"CDP port {CDP_PORT} is already in use by {detail}; "
+                f"CDP port {self.cdp_port} is already in use by {detail}; "
                 "close that process before starting CloakBrowse"
             )
             return 1
@@ -115,7 +119,7 @@ class CloakBrowseRuntime:
             owner_pid=os.getpid(),
             owner_started=owner_started,
             cdp_host=CDP_HOST,
-            cdp_port=CDP_PORT,
+            cdp_port=self.cdp_port,
             cdp_browser_id=None,
             daemon_name=DAEMON_NAME,
             browser_version=None,
@@ -530,7 +534,7 @@ class CloakBrowseRuntime:
         if read.error:
             diagnostics.append(read.error)
         cdp_host = session.cdp_host if session else CDP_HOST
-        cdp_port = session.cdp_port if session else CDP_PORT
+        cdp_port = session.cdp_port if session else self.cdp_port
         cdp = self.cdp_factory(cdp_host, cdp_port)
         snapshot = cdp.probe(
             expected_browser_id=session.cdp_browser_id if session else None,

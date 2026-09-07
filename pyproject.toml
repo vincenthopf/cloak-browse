@@ -40,6 +40,7 @@ Repository = "https://github.com/vincenthopf/cloak-browse"
 
 [project.scripts]
 cloak-browse = "cloak_browse.cli:main"
+computer-use = "cloak_browse.computer_cli:main"
 
 [dependency-groups]
 dev = [

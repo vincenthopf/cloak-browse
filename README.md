@@ -171,3 +171,56 @@ The stderr message includes the end of the per-session browser-harness log. Conf
 ## License
 
 MIT
+
+## Local computer-use CLI
+
+`computer-use` is a CLI, not an MCP server. It exposes the managed Codex desktop
+runtime and an isolated CloakBrowse browser. The bundled Codex app-server uses MCP
+internally; agents do not configure it.
+
+```sh
+computer-use tools
+computer-use doctor
+computer-use desktop state --args '{"app":"com.apple.calculator"}'
+computer-use desktop state --args '{"app":"com.apple.calculator"}' --interactive
+computer-use browser start --headless
+computer-use browser run "print(page_info())"
+computer-use browser status --json
+```
+
+Run browser start in the background. This browser uses port 9334 and separate
+session storage, leaving the old cloak-browse session on port 9333 alone. The
+pinned browser-harness creates and switches tabs without activation. Only
+`activate_tab(target)` or `switch_tab(target, activate=True)` requests activation.
+Headed browser startup itself may still display a window. Use headless when no
+visible browser is needed.
+
+Desktop calls require the installed ChatGPT app and its Computer Use helper.
+The default request path fails closed on approvals and returns JSON. Interactive
+mode requires a human terminal and an explicit `allow` response. It does not save
+an always-allow decision. macOS privacy permissions remain separate. Native
+control has reached the real Calculator approval request; approved state reads,
+clicks, foreground preservation and cancellation are not yet verified.
+
+For repeated desktop calls, keep `computer-use session` running and exchange one
+JSON object per line. It owns one ephemeral Codex thread and REPL until stdin
+closes. It is not an MCP endpoint. Read state before each action. Actions require
+`acknowledge_side_effects: true`, which records the caller's responsibility to
+obtain user authorization, not permission to bypass host approval.
+
+```json
+{"id":1,"operation":"state","args":{"app":"com.apple.calculator"}}
+{"id":2,"operation":"click","args":{"app":"com.apple.calculator","element_index":3},"acknowledge_side_effects":true}
+```
+
+The index above is illustrative. Use the index returned by your own state read.
+Piped sessions cannot approve new app access. If approval is required, the client
+fails closed and the process must be restarted after the permission workflow is
+resolved. A one-shot interactive state read does not establish a persistent grant
+for later piped sessions. This limitation is intentional in the initial CLI.
+
+Desktop results preserve the internal tool result inside a JSON envelope. State
+includes accessibility text and a local screenshot URL when approved. Do not
+send screenshot files to an unrelated destination. No raw JavaScript desktop
+command or automatic approval flag is exposed. `browser run` remains trusted
+Python execution, not a sandbox.

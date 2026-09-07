@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -23,7 +24,10 @@ class AppPaths:
     stop_file: Path
 
     def harness(self, session_id: str) -> HarnessPaths:
-        runtime_dir = Path(tempfile.gettempdir()) / "cloak-browse" / session_id
+        temporary = (
+            Path("/tmp") if sys.platform == "darwin" else Path(tempfile.gettempdir())
+        )
+        runtime_dir = temporary / "cloak-browse" / session_id
         private_dir = self.cache_dir / "harness" / session_id
         return HarnessPaths(
             runtime_dir=runtime_dir,
