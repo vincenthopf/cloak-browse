@@ -56,3 +56,74 @@ def test_timeout_declines(monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", run)
     assert dialog_approval(request())["action"] == "decline"
+
+
+def session_request(app="net.imput.helium", tool="get_app_state"):
+    value = request()
+    value["params"].update(threadId="thread", serverName="node_repl")
+    value["params"]["_meta"].update(
+        codex_approval_kind="mcp_tool_call",
+        persist=["session"],
+        riskLevel="low",
+        tool_name=tool,
+        tool_params={"app": app},
+    )
+    return value
+
+
+def test_one_grant_covers_app_tools_only(monkeypatch):
+    from cloak_browse.approval import SessionApproval
+
+    prompts = []
+
+    def allow(value):
+        prompts.append(value)
+        return {"action": "accept", "content": {}}
+
+    monkeypatch.setattr("cloak_browse.approval.dialog_approval", allow)
+    approval = SessionApproval()
+    assert approval(session_request())["action"] == "accept"
+    assert approval(session_request(tool="click"))["action"] == "accept"
+    assert approval(session_request(tool="press_key"))["action"] == "accept"
+    assert len(prompts) == 1
+    approval(session_request(app="com.apple.calculator"))
+    assert len(prompts) == 2
+    SessionApproval()(session_request())
+    assert len(prompts) == 3
+
+
+def test_scope_change_requires_new_grant(monkeypatch):
+    from cloak_browse.approval import SessionApproval
+
+    prompts = []
+
+    def allow(value):
+        prompts.append(value)
+        return {"action": "accept", "content": {}}
+
+    monkeypatch.setattr("cloak_browse.approval.dialog_approval", allow)
+    approval = SessionApproval()
+    approval(session_request())
+    changed = session_request()
+    changed["params"]["threadId"] = "other"
+    approval(changed)
+    changed = session_request()
+    changed["params"]["_meta"]["riskLevel"] = "high"
+    approval(changed)
+    assert len(prompts) == 3
+    assert (
+        approval(session_request(tool="start_audio_recording"))["action"] == "decline"
+    )
+    assert len(prompts) == 3
+
+
+def test_decline_is_never_cached(monkeypatch):
+    from cloak_browse.approval import SessionApproval
+
+    monkeypatch.setattr(
+        "cloak_browse.approval.dialog_approval",
+        lambda r: {"action": "decline", "content": None},
+    )
+    approval = SessionApproval()
+    approval(session_request())
+    assert not approval.approved

@@ -53,3 +53,48 @@ def dialog_approval(request: dict[str, Any]) -> dict[str, Any]:
     if result.returncode == 0 and result.stdout.strip() == "Allow this session":
         return {"action": "accept", "content": {}}
     return denied
+
+
+class SessionApproval:
+    def __init__(self) -> None:
+        self.approved: set[tuple[str, str, str, str]] = set()
+
+    def __call__(self, request: dict[str, Any]) -> dict[str, Any]:
+        params = request.get("params", {})
+        meta = params.get("_meta", {})
+        tool_params = meta.get("tool_params", {})
+        app = tool_params.get("app")
+        thread = params.get("threadId")
+        server = params.get("serverName")
+        eligible = (
+            request.get("method") == "mcpServer/elicitation/request"
+            and params.get("mode") == "form"
+            and meta.get("connector_id") == "computer-use"
+            and meta.get("codex_approval_kind") == "mcp_tool_call"
+            and "session" in meta.get("persist", [])
+            and params.get("requestedSchema", {}).get("properties") == {}
+            and set(tool_params) == {"app"}
+            and all(isinstance(v, str) and v for v in (app, thread, server))
+            and meta.get("tool_name")
+            in {
+                "get_app_state",
+                "click",
+                "drag",
+                "paste",
+                "press_key",
+                "scroll",
+                "select_text",
+                "set_value",
+                "type_text",
+                "perform_secondary_action",
+            }
+        )
+        if not eligible:
+            return {"action": "decline", "content": None}
+        key = (thread, server, app, str(meta.get("riskLevel", "")))
+        if key in self.approved and not meta.get("subtitle"):
+            return {"action": "accept", "content": {}}
+        decision = dialog_approval(request)
+        if decision.get("action") == "accept" and not meta.get("subtitle"):
+            self.approved.add(key)
+        return decision

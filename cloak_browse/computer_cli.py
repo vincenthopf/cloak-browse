@@ -162,9 +162,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if getattr(args, "interactive", False):
         options["approval_handler"] = human_approval
     if getattr(args, "approval_dialog", False):
-        from .approval import dialog_approval
+        from .approval import SessionApproval
 
-        options["approval_handler"] = dialog_approval
+        options["approval_handler"] = SessionApproval()
     try:
         if args.command == "desktop":
             payload = json.loads(args.args)

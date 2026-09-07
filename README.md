@@ -238,3 +238,10 @@ explicit `--approval-dialog` option is used. Other request types remain denied.
 The session timeout defaults to 180 seconds to accommodate the approval prompt.
 A live Helium state read succeeded through this flow. This proves approved native
 state access, not that every desktop action preserves foreground focus.
+
+App approval now applies to all supported desktop tools for the approved app in
+that running session, rather than prompting per tool. The grant is held only in
+memory, scoped to Codex thread, server, canonical app identifier and risk level.
+A new app, changed risk or additional warning is not covered by the old grant.
+Native policy still runs before every request. Audio and unrelated approval
+requests are not covered. Ending the process discards the grant.
