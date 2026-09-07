@@ -224,3 +224,17 @@ includes accessibility text and a local screenshot URL when approved. Do not
 send screenshot files to an unrelated destination. No raw JavaScript desktop
 command or automatic approval flag is exposed. `browser run` remains trusted
 Python execution, not a sandbox.
+
+### Human approval without leaving the agent session
+
+Run `computer-use session --approval-dialog`. Send the same JSON-lines requests
+shown above. On macOS, an app-access request opens a CLI-owned dialog for the
+human. Deny is the default and requests expire after 120 seconds. Only the human
+should click Allow this session. The response is forwarded to Codex, preserving
+the same ephemeral thread and runtime. No always-allow rule is written.
+
+This supersedes the initial piped-session approval limitation above when the
+explicit `--approval-dialog` option is used. Other request types remain denied.
+The session timeout defaults to 180 seconds to accommodate the approval prompt.
+A live Helium state read succeeded through this flow. This proves approved native
+state access, not that every desktop action preserves foreground focus.

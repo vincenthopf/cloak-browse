@@ -114,7 +114,10 @@ def parser() -> argparse.ArgumentParser:
     session = sub.add_parser(
         "session", help="Persistent JSON-lines CLI session, not MCP"
     )
-    session.add_argument("--timeout", type=float, default=30)
+    session.add_argument("--timeout", type=float, default=180)
+    session.add_argument(
+        "--approval-dialog", action="store_true", help="Ask the human in a macOS dialog"
+    )
     browser = sub.add_parser("browser", help="Delegate browser commands to CloakBrowse")
     browser.add_argument("arguments", nargs=argparse.REMAINDER)
     result.add_argument("--codex-bin", type=Path, default=None)
@@ -158,6 +161,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         options["cli_path"] = args.codex_bin
     if getattr(args, "interactive", False):
         options["approval_handler"] = human_approval
+    if getattr(args, "approval_dialog", False):
+        from .approval import dialog_approval
+
+        options["approval_handler"] = dialog_approval
     try:
         if args.command == "desktop":
             payload = json.loads(args.args)
